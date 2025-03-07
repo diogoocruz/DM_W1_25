@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+MillionSongSubset
+musicoset.sql
+song_data.csvs
+musicoset/song_features/lyrics.csv
