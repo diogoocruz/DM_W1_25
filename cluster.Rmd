@@ -1,0 +1,164 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(GGally)
+library(reshape2)
+library(ggplot2)
+library(plotly)
+
+set.seed(123)
+
+songs <- read.csv("musicoset/song_features/acoustic_features.csv", sep="")
+song_pop <- read.csv("musicoset/musicoset_popularity/song_pop.csv", sep="")
+songs_meta <- read.table("musicoset/musicoset_metadata/songs.csv", sep = "\t", header = TRUE, fill = TRUE)
+
+
+
+
+# songs$key <- as.factor(songs$key)
+songs$mode <- as.factor(songs$mode)
+songs$time_signature <- as.factor(songs$time_signature)
+
+df <- songs %>%
+  inner_join(song_pop, by = "song_id")
+
+df <- df %>%
+  inner_join(songs_meta, by = "song_id")
+
+
+df$is_pop <- as.factor(df$is_pop)
+
+df <- df %>%
+  mutate(epoca = case_when(
+    year <= 1989 ~ "early",
+    year >= 1990 ~ "late"
+  )) 
+
+df$epoca <- as.factor(df$epoca)
+
+df$popularity <- as.numeric(df$popularity)
+
+df <- df %>% 
+  filter(song_type %in% c("Collaboration", "Solo"))
+
+df <- df %>% 
+  filter(explicit %in% c("True", "False"))
+
+df$explicit <- as.factor(df$explicit)
+
+
+
+df$song_type <- as.factor(df$song_type)
+
+df <- na.omit(df)
+
+
+data <- df %>%
+  select(-song_id, -song_name, -billboard, -artists, -key, -year, -year_end_score)
+```
+```{r}
+sum(is.na(data))  # Count missing values
+
+```
+```{r}
+data_numeric <- data[sapply(data, is.numeric)]
+
+```
+
+
+
+```{r}
+wss <- numeric(10)
+
+for (k in 1:10) {
+  set.seed(42)
+  wss[k] <- kmeans(data_numeric, centers = k, nstart = 25)$tot.withinss
+}
+
+plot(1:10, wss, type = "b", pch = 19, col = "blue",
+     xlab = "Number of Clusters (k)",
+     ylab = "Total Within-cluster Sum of Squares",
+     main = "Elbow Method for Optimal k")
+
+
+```
+```{r}
+
+# Run PCA on the numeric data
+pca_result <- prcomp(data_numeric, scale. = TRUE)  # Standardize before PCA
+
+# Get the first two principal components
+pca_data <- data.frame(pca_result$x[, 1:2])  
+colnames(pca_data) <- c("PC1", "PC2")
+
+# Run K-means clustering
+kmeans_result <- kmeans(data_numeric, centers = 3 , nstart = 50)  # Change k as needed
+
+# Add cluster labels to PCA results
+pca_data$Cluster <- as.factor(kmeans_result$cluster)
+
+# Plot PCA with clusters
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 3, alpha = 0.5) +
+  labs(title = "K-means Clustering in PCA Space", color = "Cluster") +
+  theme_minimal()
+
+```
+
+```{r}
+table(kmeans_result$cluster)
+
+```
+
+
+```{r}
+aggregate(data_numeric, by = list(Cluster = kmeans_result$cluster), FUN = mean)
+
+aggregate(data_numeric, by = list(Cluster = kmeans_result$cluster), FUN = sd)
+
+
+aggregate(data_numeric, by = list(Cluster = kmeans_result$cluster), FUN = median)
+
+
+```
+```{r}
+data_numeric$Cluster <- as.factor(kmeans_result$cluster)
+
+hist(data_numeric$year[data_numeric$Cluster == 1], col = "lightblue", main = "Year Distribution in Cluster 1")
+hist(data_numeric$year[data_numeric$Cluster == 2], col = "lightblue", main = "Year Distribution in Cluster 2")
+
+
+```
+```{r}
+data_long <- data_numeric %>%
+  tidyr::pivot_longer(cols = -Cluster, names_to = "Variable", values_to = "Value")
+
+# Create the violin plots for every variable
+ggplot(data_long, aes(x = as.factor(Cluster), y = Value, fill = as.factor(Cluster))) +
+  geom_violin(trim = FALSE) +
+  facet_wrap(~ Variable, scales = "free_y") +  # Separate plots for each variable
+  labs(title = "Variable Distribution by Cluster", 
+       x = "Cluster", 
+       y = "Value") +
+  scale_fill_manual(values = c("lightblue", "lightgreen", "red")) +
+  theme_minimal()
+```
+
+
+```{r}
+library(cluster)
+
+sil <- silhouette(kmeans_result$cluster, dist(data_numeric))
+plot(sil, col = 1:max(kmeans_result$cluster), border = NA)
+
+```
+
+
+
+
+
+

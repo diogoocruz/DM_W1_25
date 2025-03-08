@@ -7,33 +7,55 @@ library(plotly)
 
 songs <- read.csv("musicoset/song_features/acoustic_features.csv", sep="")
 song_pop <- read.csv("musicoset/musicoset_popularity/song_pop.csv", sep="")
+songs_meta <- read.table("musicoset/musicoset_metadata/songs.csv", sep = "\t", header = TRUE, fill = TRUE)
 
 
-songs$key <- as.factor(songs$key)
+
+
+# songs$key <- as.factor(songs$key)
 songs$mode <- as.factor(songs$mode)
 songs$time_signature <- as.factor(songs$time_signature)
 
 df <- songs %>%
   inner_join(song_pop, by = "song_id")
 
+df <- df %>%
+  inner_join(songs_meta, by = "song_id")
+
+
 df$is_pop <- as.factor(df$is_pop)
 
 df <- df %>%
   mutate(epoca = case_when(
-    year <= 1979 ~ "early",
-    year >= 1980 & year <= 1999 ~ "mid",
-    year >= 2000 ~ "late"
+    year <= 1989 ~ "early",
+    year >= 1990 ~ "late"
   )) 
 
 df$epoca <- as.factor(df$epoca)
 
+df$popularity <- as.numeric(df$popularity)
+
+df <- df %>% 
+  filter(song_type %in% c("Collaboration", "Solo"))
+
+df <- df %>% 
+  filter(explicit %in% c("True", "False"))
+
+df$explicit <- as.factor(df$explicit)
+
+
+
+df$song_type <- as.factor(df$song_type)
+
+df <- na.omit(df)
+
 
 data <- df %>%
-  select(-song_id)
+  select(-song_id, -year, -song_name, -billboard, -artists, -year_end_score, -popularity)
 
 cor_matrix <- cor(data %>% select(where(is.numeric)))
 
-cor_melted <- melt(cor_matrix)
+cor_melted <- reshape2::melt(cor_matrix)
 
 ggplot(cor_melted, aes(Var1, Var2, fill = value)) + 
   geom_tile() + 
@@ -42,7 +64,7 @@ ggplot(cor_melted, aes(Var1, Var2, fill = value)) +
   labs(title = "Correlation Heatmap", x = "", y = "") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-discrete_vars <- c("key", "mode", "time_signature", "is_pop", "decade")
+discrete_vars <- c("key", "mode", "time_signature", "is_pop", "decade", "epoca", "song_type", "explicit")
 
 plot_variable_distribution <- function(data, discrete_vars, continuous_vars) {
   for (var in names(data)) {
