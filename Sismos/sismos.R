@@ -14,14 +14,22 @@ library(plotly)
 # Carrega o dataset
 df <- read.csv("Sismos/sismos_sul.csv", stringsAsFactors = FALSE)
 
+df$year <- as.numeric(format(as.POSIXct(df$time), "%Y"))
+hist(df$year, main = "Histograma dos Anos dos Terremotos", xlab = "Ano")
+
+
 df<- df %>%
-  select(latitude, longitude, depth, mag, gap, type)
+  select(latitude, longitude, depth, mag, gap, type, year)
 
 df <- na.omit(df)
 
+hist(df$mag, main = "Histograma da Magnitude dos Terremotos", xlab = "Magnitude")
+hist(df$depth, main = "Histograma da Profundidade dos Terremotos", xlab = "Profundidade (km)")
+hist(df$year, main = "Histograma dos Anos dos Terremotos", xlab = "Ano")
+
 # Seleciona as colunas numéricas relevantes para PCA e clustering
 df_numeric <- df %>%
-  select(latitude, longitude, depth, mag, gap)#, rms)
+  select(latitude, longitude, depth, mag, gap, year)#, rms)
 
 # Visualiza os valores ausentes
 gg_miss_var(df_numeric)
@@ -45,7 +53,7 @@ fviz_nbclust(df_scaled, kmeans, method = "wss") +
 
 # Define o número de clusters (exemplo: 3 clusters)
 set.seed(123)  # Para reprodutibilidade
-k <- 5
+k <- 3
 kmeans_res <- kmeans(df_scaled, centers = k, nstart = 25)
 
 # Adiciona a informação de cluster ao dataset
@@ -150,14 +158,24 @@ fig <- fig %>%
 fig
 
 
-
-
+boxplot(df$mag ~ df$cluster, 
+        xlab = "Cluster", 
+        ylab = "Magnitude",
+        main = "Boxplot da Magnitude por Cluster")
+boxplot(df$depth ~ df$cluster, 
+        xlab = "Cluster", 
+        ylab = "Profundidade",
+        main = "Boxplot da Magnitude por Cluster")
+boxplot(df$year ~ df$cluster, 
+        xlab = "Cluster", 
+        ylab = "Ano",
+        main = "Boxplot da Magnitude por Cluster")
 
 
 library(mclust)
 
 # Ajustando o modelo de misturas GMM com os dados padronizados
-gmm_model <- Mclust(df_scaled, G = 5)  # O Mclust seleciona automaticamente o número de componentes
+gmm_model <- Mclust(df_scaled, G = 3)  # O Mclust seleciona automaticamente o número de componentes
 
 # Visualizando os resultados
 summary(gmm_model)  # Exibe um resumo do modelo ajustado
