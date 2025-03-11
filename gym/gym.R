@@ -7,8 +7,8 @@ library(cluster)
 library(GGally)
 library(ggmap)
 library(maps)
-library(plotly)
-
+library(kernlab)
+library(patchwork)
 
 
 # Carrega o dataset
@@ -43,7 +43,7 @@ kmeans_res <- kmeans(df_scaled, centers = k, nstart = 25)
 df_numeric$cluster <- as.factor(kmeans_res$cluster)
 df$cluster <- as.factor(kmeans_res$cluster)
 # Cria um data frame com os scores dos 2 primeiros componentes principais
-pca_scores <- as.data.frame(pca$x[, 1:2])
+pca_scores <- as.data.frame(pca$x[, 1:3])
 pca_scores$cluster <- df_numeric$cluster
 
 # Plota os clusters sobre os 2 primeiros componentes da PCA
@@ -74,7 +74,30 @@ sil <- silhouette(kmeans_res$cluster, dist(df_scaled))
 fviz_silhouette(sil) +
   labs(title = "Silhouette Plot dos Clusters")
 
-# Pair Plot dos dados padronizados coloridos pelo cluster
+
+
+dist_matrix <- dist(df_scaled, method = "euclidean")
+
+hc <- hclust(dist_matrix, method = "ward.D2")
+plot(hc, labels = df$Workout_Type, main = "Dendrograma - Cluster Hierárquico")
+
+rect.hclust(hc, k = k, border = 2:4) 
+
+hc_clusters <- cutree(hc, k = 4)
+
+# Adicionar os clusters aos dados
+df$hc_Cluster <- as.factor(hc_clusters)
+pca_scores$hc_Cluster <- as.factor(hc_clusters)
+
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = hc_Cluster)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(title = "PCA e Clustering dos Dados de Terremotos",
+       x = "Componente Principal 1",
+       y = "Componente Principal 2")
+
+
+cxv # Pair Plot dos dados padronizados coloridos pelo cluster
 ggpairs(as.data.frame(df), mapping = aes(color = df$cluster)) +
   labs(title = "Pair Plot dos Dados Padronizados com Clusters")
 
@@ -145,4 +168,77 @@ fviz_pca_biplot(pca,
 sil_gmm <- silhouette(gmm_model$classification, dist(df_scaled))
 fviz_silhouette(sil_gmm) +
   labs(title = "Silhouette Plot dos Clusters - GMM")
+
+#SPECTRAL
+
+k <- 4
+modelo <- specc(df_scaled, centers = k)
+modelo
+df_numeric$spectral_cluster <- as.factor(modelo)
+df$spectral_cluster <- as.factor(modelo)
+pca_scores$spectral_cluster <- df_numeric$spectral_cluster
+
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = spectral_cluster)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(title = "PCA e Clustering com Spectral",
+       x = "Componente Principal 1",
+       y = "Componente Principal 2")
+
+ggplot(pca_scores, aes(x = PC1, y = PC3, color = spectral_cluster)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(title = "PCA e Clustering com Spectral",
+       x = "Componente Principal 1",
+       y = "Componente Principal 3")
+
+fig <- plot_ly(pca_scores, 
+               x = ~PC1, y = ~PC2, z = ~PC3, 
+               color = ~spectral_cluster, 
+               colors = c("red", "blue", "green"),  # Ajuste as cores conforme necessário
+               type = "scatter3d", 
+               mode = "markers",
+               marker = list(size = 4, opacity = 0.8))
+
+# Ajustar layout
+fig <- fig %>% layout(title = "PCA e Clustering Spectral em 3D",
+                      scene = list(xaxis = list(title = "PC1"),
+                                   yaxis = list(title = "PC2"),
+                                   zaxis = list(title = "PC3")))
+
+# Exibir gráfico interativo
+fig
+
+# Biplot da PCA com clusters (inclui vetores das variáveis e elipses de confiança)
+fviz_pca_biplot(pca, 
+                label = "var", 
+                habillage = df_numeric$spectral_cluster, 
+                addEllipses = TRUE, 
+                ellipse.level = 0.95,
+                palette = "jco") +
+  labs(title = "Biplot da PCA com Clusters")
+
+# Gráfico das contribuições das variáveis para os componentes principais
+fviz_pca_var(pca, 
+             col.var = "contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE) +
+  labs(title = "Contribuição das Variáveis na PCA")
+# Plot Silhouette para avaliar a qualidade do clustering
+sil <- silhouette(kmeans_res$spectral_cluster, dist(df_scaled))
+fviz_silhouette(sil) +
+  labs(title = "Silhouette Plot dos Clusters")
+
+
+for (var in colnames(df_numeric)) {
+  
+  # Criar boxplot
+  boxplot_plt <- ggplot(df_numeric, aes(x = spectral_cluster, y = .data[[var]], fill = spectral_cluster)) +
+    geom_boxplot(alpha = 0.7) +
+    theme_minimal() +
+    labs(title = paste("Boxplot de", var), x = "Cluster", y = var)
+  print(boxplot_plt)
+}
+ggpairs(as.data.frame(df), mapping = aes(color = df$spectral_cluster)) +
+  labs(title = "Pair Plot dos Dados Padronizados com Clusters")
 
