@@ -13,7 +13,7 @@ library(plotly)
 
 # Carrega o dataset
 df <- read.csv("gym/gym.csv", stringsAsFactors = FALSE)
-
+df$Workout_Type <- as.factor(df$Workout_Type)
 
 
 df_numeric <- df %>% select(where(is.numeric))
@@ -93,63 +93,17 @@ print(summary_table)
 
 
 
-world_map <- map_data("world")
-
-# Definir limites do mapa com base nos dados
-lat_min <- min(df_numeric$latitude) - 1
-lat_max <- max(df_numeric$latitude) + 1
-lon_min <- min(df_numeric$longitude) - 1
-lon_max <- max(df_numeric$longitude) + 1
-
-# Plot do mapa dentro dos limites dos dados
-ggplot() +
-  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
-               fill = "gray80", color = "white") +  # Mapa de fundo cinza
-  geom_point(data = df_numeric, aes(x = longitude, y = latitude, color = factor(cluster)), 
-             size = 2, alpha = 0.7) +  # Pontos coloridos conforme os clusters
-  scale_color_brewer(palette = "Set1") + 
-  labs(title = "Clusters de Terremotos", x = "Longitude", y = "Latitude") +
-  theme_minimal() +
-  coord_cartesian(xlim = c(lon_min, lon_max), ylim = c(lat_min, lat_max))
 
 
-
-
-# Criar um gráfico 3D
-fig <- plot_ly(df_numeric, 
-               x = ~longitude, 
-               y = ~latitude, 
-               z = ~depth,  # Profundidade como terceira dimensão
-               color = ~factor(cluster),  # Cor pelo cluster
-               colors = "Dark2",  # Paleta de cores
-               type = "scatter3d", 
-               mode = "markers",
-               marker = list(size = 5, opacity = 0.7))
-
-# Personalizar o layout
-fig <- fig %>%
-  layout(scene = list(
-    xaxis = list(title = "Longitude"),
-    yaxis = list(title = "Latitude"),
-    zaxis = list(title = "Profundidade (Depth)"),
-    aspectmode = "manual", 
-    aspectratio = list(x = 1, y = 1, z = 0.5)  # Ajuste da proporção dos eixos
-  ),
-  title = "Clusters de Terremotos em 3D")
-
-# Mostrar o gráfico
-fig
-
-
-boxplot(df$mag ~ df$cluster, 
+boxplot(df$Weight..kg. ~ df$cluster, 
         xlab = "Cluster", 
         ylab = "Magnitude",
         main = "Boxplot da Magnitude por Cluster")
-boxplot(df$depth ~ df$cluster, 
+boxplot(df$Fat_Percentage ~ df$cluster, 
         xlab = "Cluster", 
         ylab = "Profundidade",
         main = "Boxplot da Magnitude por Cluster")
-boxplot(df$year ~ df$cluster, 
+boxplot(df$Calories_Burned ~ df$cluster, 
         xlab = "Cluster", 
         ylab = "Ano",
         main = "Boxplot da Magnitude por Cluster")
@@ -165,6 +119,8 @@ summary(gmm_model)  # Exibe um resumo do modelo ajustado
 
 # Obtendo os clusters preditos
 df_numeric$gmm_cluster <- as.factor(gmm_model$classification)
+df$gmm_cluster <- as.factor(gmm_model$classification)
+
 
 # Plotando os clusters no espaço PCA
 pca_scores$gmm_cluster <- df_numeric$gmm_cluster
@@ -189,25 +145,4 @@ fviz_pca_biplot(pca,
 sil_gmm <- silhouette(gmm_model$classification, dist(df_scaled))
 fviz_silhouette(sil_gmm) +
   labs(title = "Silhouette Plot dos Clusters - GMM")
-
-world_map <- map_data("world")
-
-# Definir limites do mapa com base nos dados
-lat_min <- min(df_numeric$latitude) - 1
-lat_max <- max(df_numeric$latitude) + 1
-lon_min <- min(df_numeric$longitude) - 1
-lon_max <- max(df_numeric$longitude) + 1
-
-# Plot do mapa dentro dos limites dos dados
-ggplot() +
-  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
-               fill = "gray80", color = "white") +  # Mapa de fundo cinza
-  geom_point(data = df_numeric, aes(x = longitude, y = latitude, color = factor(gmm_cluster)), 
-             size = 2, alpha = 0.7) +  # Pontos coloridos conforme os clusters
-  scale_color_brewer(palette = "Set1") + 
-  labs(title = "Clusters de Terremotos", x = "Longitude", y = "Latitude") +
-  theme_minimal() +
-  coord_cartesian(xlim = c(lon_min, lon_max), ylim = c(lat_min, lat_max))
-
-
 
