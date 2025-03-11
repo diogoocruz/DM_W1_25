@@ -74,6 +74,24 @@ sil <- silhouette(kmeans_res$cluster, dist(df_scaled))
 fviz_silhouette(sil) +
   labs(title = "Silhouette Plot dos Clusters")
 
+fig <- plot_ly(pca_scores, 
+               x = ~PC1, y = ~PC2, z = ~PC3, 
+               color = ~cluster, 
+               colors = c("red", "blue", "green"),  # Ajuste as cores conforme necessário
+               type = "scatter3d", 
+               mode = "markers",
+               marker = list(size = 4, opacity = 0.8))
+
+# Ajustar layout
+fig <- fig %>% layout(title = "PCA e Clustering Spectral em 3D",
+                      scene = list(xaxis = list(title = "PC1"),
+                                   yaxis = list(title = "PC2"),
+                                   zaxis = list(title = "PC3")))
+
+# Exibir gráfico interativo
+fig
+
+
 
 
 dist_matrix <- dist(df_scaled, method = "euclidean")
