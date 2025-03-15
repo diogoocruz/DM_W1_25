@@ -1,6 +1,6 @@
 ---
 title: "DataMining - Gym"
-author: "Diogo Cruz"
+author: "Diogo Cruz   André Eiras"
 format: pdf
 editor: visual
 ---
@@ -52,8 +52,150 @@ A lista seguinte indica o significado e tipo de cada uma das variáveis presente
 -   `Avg BPM` - Varíavel Quantitativa Contínua que indica a frequência cardíaca média do membro durante o seu treino em batimentos por minuto.
 -   `Resting BPM` - Varíavel Quantitativa Contínua que indica a frequência cardíaca do membro em descanso antes do treino.
 -   `Session Duration` - Varíavel Quantitativa Contínua que indica a duração do treino em horas.
--   `Calories Burned`  - Variável Quantitativa Contínua que indica a quantidade de calorias gastas durante o treino em kCal.
+-   `Calories Burned` - Variável Quantitativa Contínua que indica a quantidade de calorias gastas durante o treino em kCal.
 -   `Workout Type` - Varíavel Categórica que inidica o tipo de treino realizado.
 -   `Fat Percentage` - Variável Quantitativa Contínua que indica a percentagem de massa gorda do membro.
 -   `Water Intake` - Variável Quantitativa Contínua que indica o número de litros de água ingeridos diáriamente pelo membro.
--   
+-   `Workout Frequency` - Variável Quantitativa Discreta que indica o número de dias por semana em que o membro treinou.
+-   `Experience Level` - Variável Quantitativa Discreta que indica o nível de experiência (1 a 3) do membro.
+-   `BMI` - Variável Quantitativa Contínua que indica o Índice de Massa Corporal do membro.
+
+Como é possível ver no gráfico seguinte, o dataset não apresenta dados omissos.
+
+```{r}
+gg_miss_var(df)
+```
+
+# Análise Exploratória do Dataset
+
+```{r}
+#| echo: FALSE
+#| messgae: FALSE
+
+bin_width <- function(x) {
+  IQR_x <- IQR(x, na.rm = TRUE)  # Intervalo interquartil
+  n <- sum(!is.na(x))  # Número de observações não nulas
+  (2 * IQR_x) / (n^(1/3))  # Regra de Freedman-Diaconis
+}
+
+hist_and_box <- function(data=df, x, x_name){
+  
+  box_plot <- ggplot(data, aes(x = x)) +
+  geom_boxplot() +
+  coord_cartesian(xlim = range(x, na.rm = TRUE)) +  # Align scales with histogram
+  labs(x = x_name) +
+  theme(legend.position = "none")
+
+  hist_plot <- ggplot(data, aes(x = x)) +
+    geom_histogram(position = "identity", color = "black", binwidth = bin_width(x)) +
+    coord_cartesian(xlim = range(x, na.rm = TRUE))+
+    labs(
+         x =x_name,
+         y = "Frequency") +
+    scale_x_continuous() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 60, hjust = 1))
+  
+  combined_plot <- box_plot / hist_plot + plot_layout(heights = c(3, 8))
+  combined_plot
+  
+}
+
+stats_calc <- function(var) {
+  # Calcular as estatísticas
+  media <- mean(var, na.rm = TRUE)
+  sd <- sd(var, na.rm = TRUE)
+  mediana <- median(var, na.rm = TRUE)
+  iqr <- IQR(var, na.rm = TRUE)
+  minimo <- min(var, na.rm = TRUE)
+  maximo <- max(var, na.rm = TRUE)
+  
+  # Criar a tabela com a estrutura desejada
+  resultado <- data.frame(
+    Estatística = c("Média", "Mediana", "Mínimo"),
+    Valor = c(media, mediana, minimo),
+    Estatística = c("SD", "IQR", "Máximo"),
+    Valor = c(sd, iqr, maximo)
+  )
+  
+  return(resultado)
+}
+```
+
+De modo a analisar a distribuição das nossas variáveis fizemos boxplot com histograma para cada variavel numérica. Podemos ver que a idade e as três variáveis referentes à frequência cardíaca dos mesmbros apresentam uma distribuição práticamente uniforme. Já as restantes variáveis apresentam distribuições com uma forma aproximadamente normal mas com assimetrias.
+
+```{r}
+hist_and_box(df, df$Age, "Age (Years)")
+
+hist_and_box(df, df$Weight..kg., "Weight (kg)")
+
+hist_and_box(df, df$Height..m., "Height (m)")
+
+hist_and_box(df, df$Max_BPM, "Max BPM")
+
+hist_and_box(df, df$Avg_BPM, "Average BPM")
+
+hist_and_box(df, df$Resting_BPM, "Resting BPM")
+
+hist_and_box(df, df$Session_Duration..hours., "Session Duration (Hours)")
+
+hist_and_box(df, df$Calories_Burned, "Calories Burned (kcal)")
+
+hist_and_box(df, df$Fat_Percentage, "Fat Percentage (%)")
+
+hist_and_box(df, df$Water_Intake..liters., "Water Intake (L)")
+
+hist_and_box(df, df$BMI, "BMI")
+
+```
+
+A tabela seguinte mostra as estatísticas descritivas das variáveis numéricas do dataset.
+
+```{r}
+summary_stats <- data.frame(
+  Variable = c("Age (Years)", "Weight (kg)", "Height (m)", "Max BPM", "Average BPM", 
+               "Resting BPM", "Session Duration (Hours)", "Calories Burned (kcal)", 
+               "Fat Percentage (%)", "Water Intake (l)", "BMI"),
+  Mean = round(c(mean(df$Age, na.rm = TRUE), mean(df$Weight..kg., na.rm = TRUE), 
+                 mean(df$Height..m., na.rm = TRUE), mean(df$Max_BPM, na.rm = TRUE), 
+                 mean(df$Avg_BPM, na.rm = TRUE), mean(df$Resting_BPM, na.rm = TRUE),
+                 mean(df$Session_Duration..hours., na.rm = TRUE), mean(df$Calories_Burned, na.rm = TRUE),
+                 mean(df$Fat_Percentage, na.rm = TRUE), mean(df$Water_Intake..liters., na.rm = TRUE),
+                 mean(df$BMI, na.rm = TRUE)), 2),
+  SD = round(c(sd(df$Age, na.rm = TRUE), sd(df$Weight..kg., na.rm = TRUE),
+               sd(df$Height..m., na.rm = TRUE), sd(df$Max_BPM, na.rm = TRUE),
+               sd(df$Avg_BPM, na.rm = TRUE), sd(df$Resting_BPM, na.rm = TRUE),
+               sd(df$Session_Duration..hours., na.rm = TRUE), sd(df$Calories_Burned, na.rm = TRUE),
+               sd(df$Fat_Percentage, na.rm = TRUE), sd(df$Water_Intake..liters., na.rm = TRUE),
+               sd(df$BMI, na.rm = TRUE)), 2),
+  Median = round(c(median(df$Age, na.rm = TRUE), median(df$Weight..kg., na.rm = TRUE),
+                   median(df$Height..m., na.rm = TRUE), median(df$Max_BPM, na.rm = TRUE),
+                   median(df$Avg_BPM, na.rm = TRUE), median(df$Resting_BPM, na.rm = TRUE),
+                   median(df$Session_Duration..hours., na.rm = TRUE), median(df$Calories_Burned, na.rm = TRUE),
+                   median(df$Fat_Percentage, na.rm = TRUE), median(df$Water_Intake..liters., na.rm = TRUE),
+                   median(df$BMI, na.rm = TRUE)), 2),
+  IQR = round(c(IQR(df$Age, na.rm = TRUE), IQR(df$Weight..kg., na.rm = TRUE),
+                IQR(df$Height..m., na.rm = TRUE), IQR(df$Max_BPM, na.rm = TRUE),
+                IQR(df$Avg_BPM, na.rm = TRUE), IQR(df$Resting_BPM, na.rm = TRUE),
+                IQR(df$Session_Duration..hours., na.rm = TRUE), IQR(df$Calories_Burned, na.rm = TRUE),
+                IQR(df$Fat_Percentage, na.rm = TRUE), IQR(df$Water_Intake..liters., na.rm = TRUE),
+                IQR(df$BMI, na.rm = TRUE)), 2),
+  Min = round(c(min(df$Age, na.rm = TRUE), min(df$Weight..kg., na.rm = TRUE),
+                min(df$Height..m., na.rm = TRUE), min(df$Max_BPM, na.rm = TRUE),
+                min(df$Avg_BPM, na.rm = TRUE), min(df$Resting_BPM, na.rm = TRUE),
+                min(df$Session_Duration..hours., na.rm = TRUE), min(df$Calories_Burned, na.rm = TRUE),
+                min(df$Fat_Percentage, na.rm = TRUE), min(df$Water_Intake..liters., na.rm = TRUE),
+                min(df$BMI, na.rm = TRUE)), 2),
+  Max = round(c(max(df$Age, na.rm = TRUE), max(df$Weight..kg., na.rm = TRUE),
+                max(df$Height..m., na.rm = TRUE), max(df$Max_BPM, na.rm = TRUE),
+                max(df$Avg_BPM, na.rm = TRUE), max(df$Resting_BPM, na.rm = TRUE),
+                max(df$Session_Duration..hours., na.rm = TRUE), max(df$Calories_Burned, na.rm = TRUE),
+                max(df$Fat_Percentage, na.rm = TRUE), max(df$Water_Intake..liters., na.rm = TRUE),
+                max(df$BMI, na.rm = TRUE)), 2)
+)
+
+# Exibir a tabela com kable (na ordem: Mean, SD, Median, IQR, Min, Max)
+kable(summary_stats, format = "pipe", digits = 2, caption = "Estatísticas Descritivas das Variáveis")
+
+
+```
