@@ -9,6 +9,7 @@ library(ggmap)
 library(maps)
 library(kernlab)
 library(patchwork)
+library(plotly)
 
 
 # Carrega o dataset

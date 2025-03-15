@@ -1,0 +1,59 @@
+---
+title: "DataMining - Gym"
+author: "Diogo Cruz"
+format: pdf
+editor: visual
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Importing Libraries
+library(dplyr)
+library(factoextra)
+library(ggplot2)
+library(naniar)
+library(cluster)
+library(GGally)
+library(ggmap)
+library(maps)
+library(kernlab)
+library(patchwork)
+library(plotly)
+library(knitr)
+library(kableExtra)
+```
+
+# Dataset
+
+```{r}
+#Importing the dataset
+df <- read.csv("gym.csv", stringsAsFactors = TRUE)
+df_numeric <- df %>% select(where(is.numeric))
+```
+
+O dataset escolhido para este trabalho chama-se "*Gym Memebers Exercise Dataset*" tendo sido recolhido no *Kaggle*. O dataset tem informação detalhada sobre a rotina de exercícios, atributos físicos e dados demográficos de membros de um ginásio, sendo composto por 15 variáveis cada uma com 973 observações.
+
+```{r}
+cat("Número de observações:",nrow(df), "\n")
+cat("Número de variávei:",ncol(df), "\n")
+sapply(df, class)
+```
+
+A lista seguinte indica o significado e tipo de cada uma das variáveis presentes.
+
+-   `Age` - Varíavel Quantitativa Contínua que indica a idade do membro.
+-   `Gender` - Varíavel Categórica que indica o género do membro.
+-   `Weigh` - Variável Quantitativa Contínua com a massa do membro em kg.
+-   `Height` - Variável Quantitativa Contínua com a altura do membro em metros.
+-   `Max BPM` - Varíavel Quantitativa Contínua que indica a frequência cardíaca máxima atingida pelo membro durante o seu treino em batimentos por minuto.
+-   `Avg BPM` - Varíavel Quantitativa Contínua que indica a frequência cardíaca média do membro durante o seu treino em batimentos por minuto.
+-   `Resting BPM` - Varíavel Quantitativa Contínua que indica a frequência cardíaca do membro em descanso antes do treino.
+-   `Session Duration` - Varíavel Quantitativa Contínua que indica a duração do treino em horas.
+-   `Calories Burned`  - Variável Quantitativa Contínua que indica a quantidade de calorias gastas durante o treino em kCal.
+-   `Workout Type` - Varíavel Categórica que inidica o tipo de treino realizado.
+-   `Fat Percentage` - Variável Quantitativa Contínua que indica a percentagem de massa gorda do membro.
+-   `Water Intake` - Variável Quantitativa Contínua que indica o número de litros de água ingeridos diáriamente pelo membro.
+-   
