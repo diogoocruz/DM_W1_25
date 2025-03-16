@@ -358,7 +358,23 @@ ggplot(pca_scores, aes(x = PC1, y = PC2, color = kmeanscluster)) +
 
 ```
 
-Através de testes ANOVA conseguimos ver que as variáveis que são significativas para a clusterização são `Weight` ,
+Através de testes ANOVA e Tukey conseguimos ver que as variáveis que são significativas para a clusterização são:
+
+-   `Weight` - Que é significativamente diferente entre os 3 clusters.
+
+-   `Height`  - Que é significativamente diferente entre os 3 clusters.
+
+-   `Session Duartion`  - Que é significativamente diferente entre os clusters 1-2 e entre os clusters 1-3, não havendo evidência estatística para diferença entre os clusters 2-3.
+
+-   `Calories Burned` - Que é significativamente diferente entre os 3 clusters.
+
+-   `Fat Percentage`  - Que é significativamente diferente entre os 3 clusters.
+
+-   `Water Intake` - Que é significativamente diferente entre os 3 clusters.
+
+-   `Workout Frequency`  - Que é significativamente diferente entre os clusters 1-2 e entre os clusters 1-3, não havendo evidência estatística para diferença entre os clusters 2-3.
+
+-   `BMI`  - Que é significativamente diferente entre os 3 clusters.
 
 ```{r}
 # Realizando a ANOVA para cada variável numérica e depois o teste de Tukey
@@ -399,10 +415,8 @@ resultados_tukey_all <- lapply(names(resultados_posthoc_significativos), functio
   tukey_table(var_name, tukey_result[[1]])
 })
 
-# Exibindo as tabelas para cada variável significativa com kable
-library(knitr)
 lapply(resultados_tukey_all, function(tabela) {
-  var_name <- names(tabela)[2]  # Nome da variável será a segunda coluna da tabela
+  var_name <- names(tabela)[2]
   kable(tabela, caption = paste("Resultados do Teste de Tukey para a variável", var_name), 
         digits = c(0, 2, 0, 3), 
         format = "html", 
@@ -418,12 +432,57 @@ lapply(resultados_tukey_all, function(tabela) {
 
 ```
 
+violin_boxplot \<- function(df, variavel, separacao, titulo, xtitulo, ytitulo) {
+
+ggplot(df, aes(x = separacao, y = variavel, fill = separacao)) +
+
+geom_violin(trim = FALSE, alpha = 0.5) + \# Gráfico de violino
+
+geom_boxplot(width = 0.1, outlier.shape = NA, color = "black") + \# Boxplot embutido
+
+labs(title = titulo, x = xtitulo, y = ytitulo) +
+
+theme_minimal() +
+
+theme(legend.position = "none") \# Remove a legenda
+
+}
+
 ```{r}
-boxplot(df$Weight..kg. ~df$kmeanscluster)
-boxplot(df$Height..m. ~df$kmeanscluster)
-boxplot(df$Session_Duration..hours. ~df$kmeanscluster)
-boxplot(df$Calories_Burned ~df$kmeanscluster)
-boxplot(df$Water_Intake..liters. ~df$kmeanscluster)
-boxplot(df$Workout_Frequency..days.week. ~df$kmeanscluster)
-boxplot(df$BMI ~df$kmeanscluster)
+violin_boxplot <- function(df, variavel, separacao, titulo, xtitulo, ytitulo) {
+  ggplot(df, aes(x = separacao, y = variavel, fill = separacao)) +
+    geom_violin(trim = FALSE, alpha = 0.5) +  # Gráfico de violino
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black") +  # Boxplot embutido
+    labs(title = titulo, x = xtitulo, y = ytitulo) +
+    theme_minimal() +
+    theme(legend.position = "none")  # Remove a legenda
+}
+
+```
+
+```{r}
+violin_boxplot(df, df$Weight..kg., df$kmeanscluster, "Diferença entre a massa nos diferentes clusters", "Clusters", "Massa (kg)")
+
+violin_boxplot(df, df$Height..m., df$kmeanscluster, "Diferença entre a altura nos diferentes clusters", "Clusters", "Altura (m)")
+
+violin_boxplot(df, df$Session_Duration..hours., df$kmeanscluster, "Diferença entre a duração do treino nos diferentes clusters", "Clusters", "Duração do treino (Horas)")
+
+
+violin_boxplot(df, df$Calories_Burned, df$kmeanscluster, "Diferença entre as calorias queimadas nos diferentes clusters", "Clusters", "Calorias Queimadas (kcal)")
+
+violin_boxplot(df, df$Fat_Percentage, df$kmeanscluster, "Diferença entre percentagem de massa gorda nos diferentes clusters", "Clusters", "Percentagem de Massa Gorda (%)")
+
+
+violin_boxplot(df, df$Water_Intake..liters., df$kmeanscluster, "Diferença entre a ingestão de água nos diferentes clusters", "Clusters", "Ingestão de Água (L)")
+
+
+violin_boxplot(df, df$Workout_Frequency..days.week., df$kmeanscluster, "Diferença entre a frequência de treinos nos diferentes clusters", "Clusters", "Frequência de Treinos (dias/semana)")
+
+
+violin_boxplot(df, df$BMI, df$kmeanscluster, "Diferença entre o índice de massa corporal nos diferentes clusters", "Clusters", "Índice de Massa Corporal")
+
+```
+
+```{r}
+
 ```
