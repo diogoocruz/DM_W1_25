@@ -24,6 +24,10 @@ library(patchwork)
 library(plotly)
 library(knitr)
 library(kableExtra)
+library(corrplot)
+library(gridExtra)
+
+set.seed(123)
 ```
 
 # Dataset
@@ -31,6 +35,7 @@ library(kableExtra)
 ```{r}
 #Importing the dataset
 df <- read.csv("gym.csv", stringsAsFactors = TRUE)
+df$Experience_Level <- as.factor(df$Experience_Level)
 df_numeric <- df %>% select(where(is.numeric))
 ```
 
@@ -67,6 +72,8 @@ gg_miss_var(df)
 ```
 
 # Análise Exploratória do Dataset
+
+## Análise Univariada
 
 ```{r}
 #| echo: FALSE
@@ -198,4 +205,225 @@ summary_stats <- data.frame(
 kable(summary_stats, format = "pipe", digits = 2, caption = "Estatísticas Descritivas das Variáveis")
 
 
+```
+
+## Análise de Correlação
+
+A matriz de correlação permite-nos perceber a relação entre as variáveis numéricas do dataset. Através da matriz de correlação conseguimos perceber quais as variáveis que estão mais correlacionadas entre si.
+
+As variáveis com maior correlação são as Calorias queimadas durante o exercício e a duração da sessão de treino, com uma correlação de 0.91. Este valor é expéctavel uma vez que quanto mais tempo de treino, mais calorias são queimadas. A massa e a o índice de massa corporal também apresentam uma forte correlação positiva. Por outro lado, a maior correlação negativa é entre a percentagem de massa gorda e as calorias queimadas, sendo esta correlação quase tão fortes como a correlação entre a ingestão de água e a percentagem de massa gorda.
+
+```{r}
+
+cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+cor_long <- as.data.frame(as.table(cor_matrix))
+short_names <- abbreviate(colnames(cor_matrix), minlength = 6)
+
+corrplot(cor_matrix)
+
+cor_long <- cor_long %>% filter(Var1 != Var2)
+
+cor_long <- cor_long %>%
+  mutate(pair = apply(cor_long[, 1:2], 1, function(x) paste(sort(x), collapse = "_"))) %>%
+  distinct(pair, .keep_all = TRUE) %>%
+  select(-pair)
+
+
+top_5 <- cor_long %>% arrange(desc(Freq)) %>% head(5)
+bottom_5 <- cor_long %>% arrange(Freq) %>% head(5)
+
+print("Top 5 maiores correlações:")
+print(top_5)
+
+print("Top 5 menores correlações:")
+print(bottom_5)
+```
+
+```{r}
+scatter_plot <- function(data, x_var, y_var, x_label, y_label, title = "Scatter Plot") {
+  ggplot(data, aes(x = x_var, y = y_var)) +
+    geom_point(color = "black", alpha = 0.6) +  # Blue points with transparency
+    labs(x = x_label, y = y_label, title = paste(y_label, "vs.", x_label)) +
+    theme_minimal(base_size = 14)  # Clean theme with readable font size
+}
+```
+
+```{r}
+scatter_plot(df, df$Session_Duration..hours., df$Calories_Burned, "Duração da sessão (horas)", "Calorias Queimadas (kcal)")
+scatter_plot(df, df$Weight..kg., df$BMI, "Massa (kg)", "Índice de Massa Corporal")
+scatter_plot(df, df$Fat_Percentage, df$Calories_Burned, "Percentagem de Gordura", "Calorias Queimadas (kg)")
+scatter_plot(df, df$Water_Intake..liters., df$Fat_Percentage, "Ingestão de Água diária (L)", "Percentagem de Gordura")
+
+```
+
+# Análise das Componentes Principais
+
+A Análise das Componentes Principais (PCA) é uma técnica de redução de dimensionalidade que permite representar os dados num espaço de dimensão inferior. A PCA é uma técnica muito útil para visualizar a estrutura dos dados e identificar padrões. Para realizar a PCA, é necessário normalizar os dados, de modo a que todas as variáveis tenham a mesma escala.
+
+A tabela seguinte mostra o resumo da PCA, onde é possível ver a variância explicada por cada componente principal. A primeira componente principal explica 28% da variância total, enquanto a segunda componente principal explica 17% da variância total. Juntas, as duas primeiras componentes principais explicam 44% da variância total.
+
+```{r}
+df_scaled <- scale(df_numeric)
+pca <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
+pca_summary <- round(summary(pca)$importance, 2)
+kable(pca_summary, caption = "Resumo da ACP")
+```
+
+Pela análise do Scree Plot, é possível perceber que a partir da terceira componente principal, a variância explicada por cada componente diminui consideravelmente. Assim, podemos concluir que as três primeiras componentes principais são as mais importantes para explicar a variância dos dados.
+
+```{r}
+fviz_eig(pca, addlabels = TRUE, ylim = c(0, 50)) +
+  labs(title = "Scree Plot - Variância Explicada pela PCA")
+```
+
+```{r}
+loadings_3_pcas <- pca$rotation[, 1:3]
+kable(round(loadings_3_pcas,3), caption = "Loadings dos 3 Primeiros Componentes Principais")
+
+
+```
+
+A tabela seguinte mostra as três variáveis mais influentes em cada componente principal. A primeira componente principal é influenciada principalmente pelas calorias queimadas, pela percentagem de massa gorda e pela duração do treino. A segunda componente principal é influenciada principalmente pela massa, pelo índice de massa corporal e pela duração do treino. Já a terceira componente principal é influenciada principalmente pela altura, pelo índice de massa corporal e pela ingestão diária de água.
+
+```{r}
+top_variables <- apply(loadings_3_pcas, 2, function(x) {
+  names(sort(abs(x), decreasing = TRUE)[1:3])
+})
+
+
+top_variables_df <- as.data.frame(top_variables)
+colnames(top_variables_df) <- c("PC1", "PC2", "PC3")
+
+kable(top_variables_df, caption = "Três Variáveis Mais Influentes em Cada Componente Principal")
+```
+
+```{r}
+fviz_pca_var(pca, 
+             col.var = "contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE) +
+  labs(title = "Contribuição das Variáveis na PCA")
+```
+
+```{r}
+pca_scores <- pca$x[, 1:3]
+
+ggplot(data.frame(PCA1 = pca_scores[, 1], PCA2 = pca_scores[, 2]), aes(x = PCA1, y = PCA2)) +
+  geom_point() +
+  labs(x = "PCA1", y = "PCA2", title = "PCA1 vs PCA2") +
+  theme_minimal() 
+
+
+ggplot(data.frame(PCA1 = pca_scores[, 1], PCA3 = pca_scores[, 3]), aes(x = PCA1, y = PCA3)) +
+  geom_point() +
+  labs(x = "PCA1", y = "PCA3", title = "PCA1 vs PCA3") +
+  theme_minimal() 
+
+
+ggplot(data.frame(PCA2 = pca_scores[, 2], PCA3 = pca_scores[, 3]), aes(x = PCA2, y = PCA3)) +
+  geom_point() +
+  labs(x = "PCA2", y = "PCA3", title = "PCA2 vs PCA3") +
+  theme_minimal() 
+
+
+```
+
+# Clusterização
+
+A clusterização é uma técnica de aprendizagem não supervisionada que permite agrupar os dados em grupos com características semelhantes. Para realizar a clusterização, é necessário normalizar os dados, de modo a que todas as variáveis tenham a mesma escala. Iremos testar diferentes métodos de clusterização, nomeadamente o K-means, o DBSCAN, o Hierarchical Clustering, o método de mistura de Gaussianas e o método de clustering espectral.
+
+## K-means
+
+O K-means é um dos métodos de clusterização mais populares. O K-means agrupa os dados em K clusters, onde K é um número pré-definido. O K-means é um método iterativo que tenta minimizar a soma dos quadrados das distâncias entre os pontos e os centroides dos clusters.
+
+Através do gráfico e pelo método do cotovelo, é possível perceber que o número ótimo de clusters é 3.
+
+```{r}
+fviz_nbclust(df_scaled, kmeans, method = "wss") +
+  labs(title = "Método Elbow para Definir o Número Ótimo de Clusters")
+```
+
+```{r}
+kmeans_clusters <- kmeans(df_scaled, centers = 3, nstart = 25)
+df$kmeanscluster <- as.factor(kmeans_clusters$cluster)
+
+pca_scores <- as.data.frame(pca$x[, 1:3])
+
+pca_scores$kmeanscluster <- as.factor(kmeans_clusters$cluster)
+
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = kmeanscluster)) +
+  geom_point() +
+  labs(title = "K-means Clustering (PC1 vs PC2)", color= "Clusters por Kmeans") +
+  theme_minimal()
+
+```
+
+Através de testes ANOVA conseguimos ver que as variáveis que são significativas para a clusterização são `Weight` ,
+
+```{r}
+# Realizando a ANOVA para cada variável numérica e depois o teste de Tukey
+resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
+  aov_result <- aov(x ~ kmeanscluster, data = df)
+  
+  # Realizar o teste de Tukey se a ANOVA for significativa
+  if (summary(aov_result)[[1]]$`Pr(>F)`[1] < 0.05) {
+    tukey_result <- TukeyHSD(aov_result)
+    return(tukey_result)
+  } else {
+    return(NULL)  # Se não for significativo, retornamos NULL
+  }
+})
+
+# Filtrando variáveis com resultados de Tukey
+resultados_posthoc_significativos <- resultados_posthoc[sapply(resultados_posthoc, function(x) !is.null(x))]
+
+# Função para gerar uma tabela com os resultados do Tukey
+tukey_table <- function(var_name, tukey_result) {
+  # Criando a tabela para a variável
+  result_df <- data.frame(
+    Comparação = rownames(tukey_result),
+    Diferença_Média = tukey_result[, "diff"],
+    Intervalo_Confiança = paste("[", round(tukey_result[, "lwr"], 2), ", ", round(tukey_result[, "upr"], 2), "]", sep = ""),
+    Valor_p_Ajustado = round(tukey_result[, "p adj"], 3)
+  )
+  
+  # Renomeando as colunas
+  colnames(result_df) <- c("Comparação", paste("Diferença Média (", var_name, ")", sep = ""), "Intervalo de Confiança", "Valor p Ajustado")
+  
+  return(result_df)
+}
+
+# Aplicando a função para cada variável significativa
+resultados_tukey_all <- lapply(names(resultados_posthoc_significativos), function(var_name) {
+  tukey_result <- resultados_posthoc_significativos[[var_name]]
+  tukey_table(var_name, tukey_result[[1]])
+})
+
+# Exibindo as tabelas para cada variável significativa com kable
+library(knitr)
+lapply(resultados_tukey_all, function(tabela) {
+  var_name <- names(tabela)[2]  # Nome da variável será a segunda coluna da tabela
+  kable(tabela, caption = paste("Resultados do Teste de Tukey para a variável", var_name), 
+        digits = c(0, 2, 0, 3), 
+        format = "html", 
+        align = "lccc", 
+        col.names = c("Comparação", "Diferença Média", "Intervalo de Confiança", "Valor p Ajustado")) %>%
+    kable_styling(full_width = TRUE, position = "center", 
+                  bootstrap_options = c("striped", "hover", "condensed")) %>%
+    column_spec(2, bold = TRUE, color = "white", background = "darkgray") %>%
+    column_spec(4, background = "#f2f2f2")
+})
+
+
+
+```
+
+```{r}
+boxplot(df$Weight..kg. ~df$kmeanscluster)
+boxplot(df$Height..m. ~df$kmeanscluster)
+boxplot(df$Session_Duration..hours. ~df$kmeanscluster)
+boxplot(df$Calories_Burned ~df$kmeanscluster)
+boxplot(df$Water_Intake..liters. ~df$kmeanscluster)
+boxplot(df$Workout_Frequency..days.week. ~df$kmeanscluster)
+boxplot(df$BMI ~df$kmeanscluster)
 ```
