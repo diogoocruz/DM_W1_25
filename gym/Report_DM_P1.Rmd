@@ -1,0 +1,484 @@
+---
+title: "Assessing gym members fitness level based gym experience"
+author: "André Eiras, Diogo Cruz"
+date: "2025-03-23"
+output: pdf_document
+  
+header-includes:
+  - \usepackage{caption}
+  - \captionsetup{justification=raggedright,singlelinecheck=false}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Importing Libraries
+library(tidyverse)
+library(factoextra)
+library(naniar)
+library(cluster)
+library(GGally)
+library(ggmap)
+library(maps)
+library(kernlab)
+library(patchwork)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(gridExtra)
+library(cluster)
+library(dbscan)
+library(mclust)
+set.seed(123)
+```
+\tableofcontents
+\newpage
+
+```{r, echo=FALSE}
+# Data frame creation
+
+df <- read.csv("./gym.csv", stringsAsFactors = FALSE) %>% 
+  mutate(Workout_Type = as.factor(Workout_Type),
+         Experience_Level = as.factor(Experience_Level))
+
+desc <- c("Age of the gym member", 
+          "Gender of gym member (binary)",
+          "Member's weight (kg)",
+          "Member's height (m)",
+          "Maximum heart rate during workout sessions (bpm)",
+          "Average heart rate during workout sessions (bpm)",
+          "Heart rate at rest before workout (bpm)",
+          "Duration of each workout sessions (hours)",
+          "Total calories burned during each session",
+          "Type of workout performed (factors)",
+          "Body fat percentage of the member",
+          "Daily water intake during workouts",
+          "Number of workout session per week",
+          "Experience level: 1-Begginer, 2-Intermediate, 3-Expert (factors)",
+          "Body Mass Index, calculated from height and weight")
+df_vars <- data.frame(Variables = names(df), Description = desc)
+
+df_numeric <- df %>% select(where(is.numeric))
+
+df_scaled <- scale(df_numeric)
+
+df_exp <- df_numeric %>% merge(df$Experience_Level)
+```
+
+```{r, echo=FALSE}
+# Defining functions
+bin_width <- function(x) {
+  IQR_x <- IQR(x, na.rm = TRUE)  # Intervalo interquartil
+  n <- sum(!is.na(x))  # Número de observações não nulas
+  (2 * IQR_x) / (n^(1/3))  # Regra de Freedman-Diaconis
+}
+
+hist_and_box <- function(data=df, x, x_name){
+  
+  box_plot <- ggplot(data, aes(x = x)) +
+  geom_boxplot() +
+  coord_cartesian(xlim = range(x, na.rm = TRUE)) +  # Align scales with histogram
+  labs(x = x_name) +
+  theme(legend.position = "none")
+
+  hist_plot <- ggplot(data, aes(x = x)) +
+    geom_histogram(position = "identity", color = "darkgrey", binwidth = bin_width(x)) +
+    coord_cartesian(xlim = range(x, na.rm = TRUE))+
+    labs(
+         x =x_name,
+         y = "Frequency") +
+    scale_x_continuous() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 60, hjust = 1))
+  
+  combined_plot <- box_plot / hist_plot + plot_layout(heights = c(3, 8))
+  combined_plot
+  
+}
+
+stats_calc <- function(df) {
+  means <- numeric(length(df))
+  sds <- numeric(length(df))
+  medians <- numeric(length(df))
+  iqrs <- numeric(length(df))
+  mins <- numeric(length(df))
+  maxs <- numeric(length(df))
+  
+  for (i in seq_along(df)) {
+    column <- df[[i]]
+    means[i] <- mean(column, na.rm = TRUE)
+    sds[i] <- sd(column, na.rm = TRUE)
+    medians[i] <- median(column, na.rm = TRUE)
+    iqrs[i] <- IQR(column, na.rm = TRUE)
+    mins[i] <- min(column, na.rm = TRUE)
+    maxs[i] <- max(column, na.rm = TRUE)
+  }
+  
+  # Combine into a data frame
+  resultado <- data.frame(
+    Variable = names(df),
+    Min = mins,
+    Mean = means,
+    Median = medians,
+    SD = sds,
+    IQR = iqrs,
+    Max = maxs
+  )
+  
+  return(resultado)
+}
+scatter_plot <- function(data, x_var, y_var, x_label, y_label, title = "Scatter Plot") {
+  ggplot(data, aes(x = x_var, y = y_var)) +
+    geom_point(color = "darkgrey", alpha = 0.6) +  # Blue points with transparency
+    labs(x = x_label, y = y_label, title = paste(y_label, "vs.", x_label)) +
+    theme_minimal(base_size = 14)  # Clean theme with readable font size
+}
+
+
+# Função para gerar uma tabela com os resultados do Tukey
+tukey_table <- function(var_name, tukey_result) {
+  # Criando a tabela para a variável
+  result_df <- data.frame(
+    Comparison = rownames(tukey_result),
+    Mean_Difference = tukey_result[, "diff"],
+    Confidence_Interval = paste("[", round(tukey_result[, "lwr"], 2), ", ", round(tukey_result[, "upr"], 2), "]", sep = ""),
+    Adjusted_p_value = round(tukey_result[, "p adj"], 3)
+  )
+  
+  # Renomeando as colunas
+  colnames(result_df) <- c("Comparison", paste("Mean_Difference (", var_name, ")", sep = ""), "Confidence_Interval", "Adjusted_p_value")
+  
+  return(result_df)
+}
+
+violin_boxplot <- function(df, variavel, separacao, xtitulo, ytitulo) {
+  ggplot(df, aes(x = separacao, y = variavel, fill = separacao)) +
+    geom_violin(trim = FALSE, alpha = 0.5) +  # Gráfico de violino
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black") + # Boxplot embutido 
+    scale_fill_manual(values = c("1" = "lightgoldenrod", "2" = "lightskyblue", "3" = "lightgray")) +
+    labs(x = xtitulo, y = ytitulo) +
+    theme_minimal() +
+    theme(legend.position = "none")  # Remove a legenda
+}
+```
+
+# Introduction
+
+Real world problems are usually complex and dependent on a variety of factors, in order to be able to solve them we must rely on statistical learning methods. Statistical learning methods can be divided between supervised learning methods and unsupervised learning methods. Supervised learning methods are useful for classification and prediction, where the goal is to predict the value of a target variable using other known input variables. Unsupervised Learning methods are useful for clustering, association rule mining and dimensionality reduction, where the goal is to uncover patterns or structures from data without specified target outputs. Both of these methods rely on identifying structure in data but differ in whether a response variable guides that process.
+
+In this project our goal is to be able to identify fitness patterns and performance across a diver gym experience levels using the _Gym Members Exercise Dataset_. This dataset has 15 variables with 973 observations each. Table 1 shows each variable and it's subsequent meaning. The purpose of the present project is to assess the differences between gym members considering their experience level, and how that impacts their performance.
+
+```{r, echo = FALSE}
+kableExtra::kable(df_vars, caption = "Gym members dataset variable meaning.")
+```
+
+First we start by taking a look at the way each of the fitness metrics and demographic variables relate to the members experience level to establish a baseline understanding. Then we perform a Principal Components Analysis and finally Clustering in order to define the underlying patterns in the data.
+
+## Exploratory Data Analysis
+
+In order to prevent unwanted results when performing PCA we checked our data for missing values. As is possible to see from figure 5 this is not the case. Table 2 provides a quick assessment of descriptive statistics of the numeric variables in the Gym members dataset. The average gym member is a 39 yo male, 1.72 m tall, weighting around 74 kg, with 25% body fat and a body mass index of 25. Members average heart rate when working out is 144 beats per minute and when resting is 62 bpm and the maximum heart rate when working out on average is 180 beats per minute. Workout sessions tend to last 1 hour and 16 minutes spread between 3 workouts a week. The average member drinks 2.6 liters of water per workout. Also there aren't many differences in age between male and female members across the three levels of experience, expert male members tend to be younger than their female counterparts and the same is true for female intermediate members. Members who workout more days of the week usually tend to do longer sessions, see figure 7. 
+
+```{r, echo=FALSE}
+stats_table <- stats_calc(df_numeric)
+kable(stats_table, caption = "Descriptive statistics for the numeric variables of the dataset.")
+```
+
+Considering the probabilistic distribution of different variables from figures 8, 11, 12 and 13 it is possible to assess that the age and different heart rate measures of the gym members seem to follow an uniform distribution. While the remaining variables being reasonable symetric. Weight, Height and body mass index are slightly right skewed while fat percentage is slightly left skewed. The distribution of data can be assessed from the box-plot and histogram combination on figure 8-19 on the annex section of this report.
+
+From figure 19 is possible to see that the strongest positive correlation between variables happens between the Calories Burned per sessions and the Session Duration, as expected longer sessions increase energy expenditure. Also workout frequency as is possible to assess from figure 7 also shows a positive strong correlation with the session duration. Fat percentage is strongly negatively correlated with the amount of calories burned per session, the amount of water intake per session, duration of session and even frequency of workout sessions. Indicating that higher levels of body fat are correlated with less time spent at the gym.
+
+# Methods
+
+Having establish that there are no missing values on our dataset and some a priori relationships between variables it is possible to proceed to conduct a Principal Components Analysis followed by Clustering analysis using k-means method. Due to the different scales in which data is available we start by normalizing it.
+
+```{r,echo=FALSE}
+# PCA
+pca <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
+pca_summary <- round(summary(pca)$importance, 2)
+
+# K-means
+kmeans_clusters <- kmeans(df_scaled, centers = 3, nstart = 25)
+df$kmeanscluster <- as.factor(kmeans_clusters$cluster)
+
+pca_scores <- as.data.frame(pca$x[, 1:3])
+
+pca_scores$kmeanscluster <- as.factor(kmeans_clusters$cluster)
+
+# Realizando a ANOVA para cada variável numérica e depois o teste de Tukey
+resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
+  aov_result <- aov(x ~ kmeanscluster, data = df)
+  
+  # Realizar o teste de Tukey se a ANOVA for significativa
+  if (summary(aov_result)[[1]]$`Pr(>F)`[1] < 0.05) {
+    tukey_result <- TukeyHSD(aov_result)
+    return(tukey_result)
+  } else {
+    return(NULL)  # Se não for significativo, retornamos NULL
+  }
+})
+
+# Filtrando variáveis com resultados de Tukey
+resultados_posthoc_significativos <- resultados_posthoc[sapply(resultados_posthoc, function(x) !is.null(x))]
+
+# Aplicando a função para cada variável significativa
+resultados_tukey_all <- lapply(names(resultados_posthoc_significativos), function(var_name) {
+  tukey_result <- resultados_posthoc_significativos[[var_name]]
+  tukey_table(var_name, tukey_result[[1]])
+})
+
+gmm_clusters <- Mclust(df_scaled, G = 3)
+df$gmmcluster <- as.factor(gmm_clusters$classification)
+cluster_labels <- as.numeric(gmm_clusters$classification)
+
+sil_kmeans <- silhouette(kmeans_clusters$cluster, dist(df_scaled))
+sil_gmm <- silhouette(cluster_labels, dist(df_scaled))
+```
+
+## Principal Components Analysis
+
+PCA is used to reduce data dimensionality while preserving variance. It is a Matrix factorization technique aimed at data simplification. PCA seeks to find a sequence of best linear approximations to a multivariate dataset by projecting the data onto lower-dimensional subspaces . It provides insight into structure, variance and dimension reduction in unsupervised learning. It identifies a sequence of affine hyperplanes (subspaces) that approximate the data in a least-squares sense.
+
+To solve PCA, we center the data matrix $\mathbf{X}=UDV^T$: U - left singular vectors (observations in PC space); D - Diagonal matrix of singular values; V - Right singular vectors (principal component directions). The principal components are the rows of $\mathbf{UD}$, the principal axes are the columns of $\mathbf{V}$, the eigenvalues of the covariance matrix $\mathbf{X^T X}$ are $\lambda_i=d_i^2$,and represent the variance explained by each component.The first PC direction $v_1$ maximizes variance:$$v_1=\arg \max_{v:||v||=1} Var(\mathbf{X}v)$$ 
+Subsequent PCs are orthogonal to previous ones and maximize the remaining variance.
+
+The following table shows the summary of the PCA, where you can see the variance explained by each principal component. The first principal component explains 28% , while the second principal component explains 17% and the third principal component explains 11% of the total variance. Together, the first three principal components explain 56% of the total variance.
+
+```{r,echo=FALSE}
+kable(pca_summary, caption = "PCA synthesis")
+```
+
+From figure 1, it is possible to notice that starting from the third principal component, the variance explained by each component decreases considerably. Therefore, we can conclude that the first three principal components are the most important for explaining the variance in the data.
+
+```{r, echo=FALSE, fig.cap="Scree plot - Principal components aggregated explained variance"}
+fviz_eig(pca, addlabels = TRUE, ylim = c(0, 50))
+```
+
+Table 3 shows the three most influential variables in each principal component. The first principal component is mainly influenced by calories burned, percentage of body fat, and workout duration. The second principal component is mainly influenced by weight, body mass index, and workout duration. The third principal component is mainly influenced by height, body mass index, and daily water intake. To check the effect of each variable on the principal components please refer to table 4 on the annex section of this report and for a visual representation of the contribution of each variable see figure 20.
+
+```{r, echo=FALSE}
+loadings_3_pcas <- pca$rotation[, 1:3]
+top_variables <- apply(loadings_3_pcas, 2, function(x) {
+  names(sort(abs(x), decreasing = TRUE)[1:3])
+})
+
+top_variables_df <- as.data.frame(top_variables)
+colnames(top_variables_df) <- c("PC1", "PC2", "PC3")
+
+kable(top_variables_df, caption = "The three most influential variables of each Principal Components")
+```
+
+## Clustering
+
+The goal of clustering analysis is to partition a set of observation into groups (clusters) such that intra-cluster similarity is high and inter-cluster similarity is low - without using outcome labels. Similarity and dissimilarity is related to how we compare observations and are the foundation of clustering methods. Most clustering methods rely on a dissimilarity matrix between each pair of observation. The dissimilarity is assessed by computing metrics such as euclidean distance $$d(x_i,x_j) = \sqrt{\sum_k(x_{ik},x_{jk})^2}$$
+
+The choice of metrics affects cluster shape and euclidean distance typically favors spherical clusters like in K-means. Similarity and dissimilarity indices influence both clustering structure and result interpretation. 
+
+K-means is a popular and simple partitioning algorithm that minimizes the within-cluster sum of squares iteratively. It is performed in the next sequence of steps: 1. Choose the K number of clusters; 2. Initialize K centroids; 3. Assign each observation to the closest centroid; 4. Recompute centroids as the mean of all assigned points; 5. Repeat steps 3-4 until convergence. The output of which can be evaluated using internal validation indices. Using the elbow method we've established that 3 clusters would be the optimal number of clusters, for the purpose of this report, see figure 2. Finally we performed an ANOVA and subsequent Tukey test to assess significant differences between variables within clusters. To see the Tukey test results for each significant variable refer to the annex section of this report.
+
+```{r, echo=FALSE, fig.cap= "Assessing the optimal number of clusters from the total within sum of squares"}
+fviz_nbclust(df_scaled, kmeans, method = "wss")
+```
+
+Mixture models generalize clustering by assuming that data is generated from a probabilistic mixture of distribution each representing a cluster. Given the overall distribution of our data being reasonably symmetric we have also used a gaussian mixture model. Gaussian mixture models assumes each data point $x_i$ arises from:$$p(x_i)=\sum_{k=1}^K\pi_k.N(x_i|\mu_k,\sigma_k)$$where $\pi_k$ are mixing proportions, and N is a multivariate Gaussian. The k-means method is a limiting case of GMMs when all $\sigma_k=\sigma^2I$ and hard assignments are used. We've also used gaussian mixture models clustering in order to compare the results with the k-means, to see the summary of the model please refer to the annex section.
+
+# Results and Discussion
+
+By performing the ANOVA followed by the Tukey tests, we were able to see that the variables significant for clustering are: Weight which is significantly different among the 3 clusters; Height which is significantly different among the 3 clusters; Session Duration which is significantly different between clusters 1-2 and between clusters 1-3, with no statistical evidence for a difference between clusters 3-2; Calories Burned which is significantly different among the 3 clusters; Fat Percentage which is significantly different among the 3 clusters; Water Intake which is significantly different among the 3 clusters; Workout Frequency which is significantly different between clusters 1-1 and between clusters 1-3, with no statistical evidence for a difference between clusters 3-2; BMI which is significantly different among the 3 clusters. Cluster 1 is characterized by heavier, taller individuals that subsequently have higher BMI and consume more water per workout. While Cluster 2 encompasses the majority of gym members and is mostly associated with older individuals with higher body fat percentage. Finally Cluster 3 encompass the high performance group of individuals who workout more frequently and during longer periods and subsequently burn more calories. To see a biplot showcasing these relations refer to figure 3.
+
+```{r,echo=FALSE, fig.height=7, fig.width=7, fig.cap="Biplot of the PCA with 3 Gaussian Mixture Model clusters color coded. PC1 on the x-axis explains 27.6% of the variance and PC2 on the y-axis explains 16.8%."}
+fviz_pca_biplot(pca, 
+                label = "var", 
+                habillage = df$gmmcluster, 
+                addEllipses = TRUE, 
+                ellipse.level = 0.95,
+                palette = "jco",
+                col.var = "red")
+```
+To evaluate both clustering solutions we used silhouette indexes the plots of which can be seen in figure 4. For a more in-depth evaluation of the differences between clusters in both methods for each variable see figures 21-28 in the annex section. In the k-means clusters the most cohesive structure was found on cluster 3 while clusters 1 and 2 have flatter or declining silhouettes, which translates to the boundary between clusters being more ambiguous. In GMM clusters the most cohesive structure was found on cluster 1 in both methods cluster 2 performed the weakest. The average silhouette widths are slightly lower in the k-means cluster than in GMM's best cluster, but the cluster sizes are more balanced. 
+
+```{r, echo=FALSE, fig.cap="Comparison between silhouette plots of K-means Cluster (left) and GMM Clusters (right)"}
+sil_k <- fviz_silhouette(sil_kmeans) +
+  labs(title = "Silhouette Plot of k-means Clusters")
+
+sil_g <- fviz_silhouette(sil_gmm) +
+  labs(title = "Silhouette Plot of GMM Clusters")
+
+sil_k + sil_g
+
+```
+
+# References
+
+Hand, D. J., Mannila, H., & Smyth, P. (2001). Principles of data mining. MIT Press.
+
+Duda, R. O., Hart, P. E., & Stork, D. G. (2001). Pattern classification (2nd ed.). Wiley-Interscience.
+
+Hastie, T., Tibshirani, R., & Friedman, J. (2009). The elements of statistical learning: Data mining, inference, and prediction (2nd ed., Chap. 14). Springer.
+https://doi.org/10.1007/978-0-387-84858-7
+
+Liu, B. (2011). Web data mining: Exploring hyperlinks, contents, and usage data (2nd ed.). Springer.
+https://doi.org/10.1007/978-3-642-19460-3
+
+Valakhorasani. (2022). Gym members exercise dataset [Data set]. Kaggle. https://www.kaggle.com/datasets/valakhorasani/gym-members-exercise-dataset
+
+# Annex
+
+## Exploratory univarate data analysis
+```{r, echo=FALSE, fig.align='center',fig.cap="There are no missing values on this dataset."}
+p <- gg_miss_var(df_numeric)
+print(p)
+```
+
+```{r, echo=FALSE, fig.align='center',fig.cap="On average gym members are around 40yo. Expert level male member are on average younger than their female counterparts while the opposite is true for intermediate level members. Note that experience levels are organized from 1 - Beginner to 3 - Expert."}
+ggplot(df, aes(x=Experience_Level, y= Age, fill = Gender)) + 
+  geom_boxplot() + 
+  theme_minimal() +
+  labs(x = "Experience level") +
+  scale_fill_manual(values = c("Female" = "lightgray", "Male" = "lightgoldenrod"))
+```
+
+```{r, echo=FALSE, fig.align='center',fig.cap="Members that workout with more frequency 4 to 5 days per week usually have longer workout sessions."}
+ggplot(df_exp, aes(x=as.factor(Workout_Frequency..days.week.), 
+                   y=Session_Duration..hours.)) +
+  geom_boxplot() +
+  labs(x = "Frequency of workout session (days)", 
+       y = "Duration of workout session (hours)") +
+  theme_minimal()
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap= "Histogram and Boxplot of Gym member's Age" }
+hist_and_box(df_numeric,df_numeric$Age, "Age")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Weight"}
+hist_and_box(df_numeric,df_numeric$Weight..kg., "Weight (Kg)")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Height"}
+hist_and_box(df_numeric,df_numeric$Height..m., "Height (m)")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Maximum heart rate"}
+hist_and_box(df_numeric,df_numeric$Max_BPM, "Max BPM")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Average heart rate"}
+hist_and_box(df_numeric,df_numeric$Avg_BPM, "Average BPM")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Resting heart rate"}
+hist_and_box(df_numeric,df_numeric$Resting_BPM, "Resting BPM")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Training Sessions duration"}
+hist_and_box(df_numeric,df_numeric$Session_Duration..hours., "Session Duration (hours)")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Calories burned during each session"}
+hist_and_box(df_numeric,df_numeric$Calories_Burned, "Calories Burned")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's body fat percentage"}
+hist_and_box(df_numeric,df_numeric$Fat_Percentage, "Fat Percentage (%)")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's daily water intake during workouts"}
+hist_and_box(df_numeric,df_numeric$Water_Intake..liters., "Water Intake (l)")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's number of workout sessions per week"}
+hist_and_box(df_numeric,df_numeric$Workout_Frequency..days.week., "Workout Frequency (Days)")
+```
+
+```{r, echo=FALSE, fig.align='center', fig.cap="Histogram and Boxplot of Gym member's Body Mass Index"}
+hist_and_box(df_numeric,df_numeric$BMI, "Body Mass Index")
+```
+
+## Exploring correlations
+
+```{r, echo=FALSE,  fig.width=7, fig.height=7, fig.align='center', fig.cap="Correlation matrix"}
+cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+cor_long <- as.data.frame(as.table(cor_matrix))
+short_names <- abbreviate(colnames(cor_matrix), minlength = 6)
+
+corrplot(cor_matrix)
+```
+
+## Principal components analysis
+
+```{r, echo=FALSE}
+kable(round(loadings_3_pcas,3), caption = "Loadings of the three first principal components")
+```
+
+```{r, echo=FALSE, fig.align='center',fig.width=7,fig.height=7,fig.cap="Variables effect on principle components"}
+fviz_pca_var(pca, 
+             col.var = "contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE)
+```
+
+```{r, echo=FALSE}
+## Clustering analysis
+# Gerando a tabela simples em LaTeX
+lapply(resultados_tukey_all, function(tabela) {
+  var_name <- names(tabela)[2]
+  
+  # Gerando a tabela com kable (formato latex)
+  kable(tabela, 
+        caption = paste("Tukey test results for the variable:", var_name), 
+        digits = c(0, 2, 0, 3), 
+        align = "lccc", 
+        col.names = c("Comparison", "Mean Difference", "Confidence Interval", "Adjusted p-value"))
+})
+```
+
+```{r, echo=FALSE}
+summary(gmm_clusters)
+```
+
+```{r, echo=FALSE}
+
+vkmweight <- violin_boxplot(df, df$Weight..kg., df$kmeanscluster, "Clusters", "Weight (kg)")
+
+vkmheight <-violin_boxplot(df, df$Height..m., df$kmeanscluster, "Clusters", "Height (m)")
+
+vkmsd <-violin_boxplot(df, df$Session_Duration..hours., df$kmeanscluster, "Clusters", "Session duration (Hours)")
+
+
+vkmcb <-violin_boxplot(df, df$Calories_Burned, df$kmeanscluster, "Clusters", "Burned Calories (kcal)")
+
+vkmfp <-violin_boxplot(df, df$Fat_Percentage, df$kmeanscluster, "Clusters", "Body fat percentage (%)")
+
+vkmwi <-violin_boxplot(df, df$Water_Intake..liters., df$kmeanscluster, "Clusters", "Water Intake (L)")
+
+vkmwf <-violin_boxplot(df, df$Workout_Frequency..days.week., df$kmeanscluster, "Clusters", "Workout frequency (days/week)")
+
+vkmbmi <-violin_boxplot(df, df$BMI, df$kmeanscluster, "Clusters", "Body Mass Index")
+
+vgmmweight <- violin_boxplot(df, df$Weight..kg., df$gmmcluster, "Clusters", "Weight (kg)")
+
+vgmmheight <-violin_boxplot(df, df$Height..m., df$gmmcluster, "Clusters", "Height (m)")
+
+vgmmsd <-violin_boxplot(df, df$Session_Duration..hours., df$gmmcluster, "Clusters", "Session duration (Hours)")
+
+vgmmcb <-violin_boxplot(df, df$Calories_Burned, df$gmmcluster, "Clusters", "Burned Calories (kcal)")
+
+vgmmfp <-violin_boxplot(df, df$Fat_Percentage, df$gmmcluster, "Clusters", "Body fat percentage (%)")
+
+vgmmwi <-violin_boxplot(df, df$Water_Intake..liters., df$gmmcluster, "Clusters", "Water Intake (L)")
+
+vgmmwf <-violin_boxplot(df, df$Workout_Frequency..days.week., df$gmmcluster, "Clusters", "Workout frequency (days/week)")
+
+vgmmbmi <-violin_boxplot(df, df$BMI, df$gmmcluster, "Clusters", "Body Mass Index")
+```
+
+```{r, echo=FALSE, fig.cap="Violin plots comparing results of the k-means cluster (left) vs gmm cluster (right)"}
+vkmweight + vgmmweight
+vkmheight + vgmmheight
+vkmsd + vgmmsd
+vkmcb + vgmmcb
+vkmfp + vgmmfp
+vkmwi + vgmmwi
+vkmwf + vgmmwf
+vkmbmi + vgmmbmi
+```
