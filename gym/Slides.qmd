@@ -1,0 +1,429 @@
+---
+title: "Membros de Ginásio"
+format: revealjs
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+# Importing Libraries
+library(tidyverse)
+library(factoextra)
+library(naniar)
+library(cluster)
+library(GGally)
+library(ggmap)
+library(maps)
+library(kernlab)
+library(patchwork)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(gridExtra)
+library(cluster)
+library(dbscan)
+library(mclust)
+set.seed(123)
+```
+
+```{r, include= FALSE}
+# Data frame creation
+
+df <- read.csv("gym.csv", stringsAsFactors = FALSE) %>% 
+  mutate(Workout_Type = as.factor(Workout_Type),
+         Experience_Level = as.factor(Experience_Level))
+
+desc <- c("Age of the gym member", 
+          "Gender of gym member (binary)",
+          "Member's weight (kg)",
+          "Member's height (m)",
+          "Maximum heart rate during workout sessions (bpm)",
+          "Average heart rate during workout sessions (bpm)",
+          "Heart rate at rest before workout (bpm)",
+          "Duration of each workout sessions (hours)",
+          "Total calories burned during each session",
+          "Type of workout performed (factors)",
+          "Body fat percentage of the member",
+          "Daily water intake during workouts",
+          "Number of workout session per week",
+          "Experience level: 1-Begginer, 2-Intermediate, 3-Expert (factors)",
+          "Body Mass Index, calculated from height and weight")
+df_vars <- data.frame(Variables = names(df), Description = desc)
+
+df_numeric <- df %>% select(where(is.numeric))
+
+df_scaled <- scale(df_numeric)
+
+df_exp <- df_numeric %>% merge(as.numeric(df$Experience_Level))
+```
+
+```{r, echo=FALSE, include=FALSE}
+# Defining functions
+bin_width <- function(x) {
+  IQR_x <- IQR(x, na.rm = TRUE)  # Intervalo interquartil
+  n <- sum(!is.na(x))  # Número de observações não nulas
+  (2 * IQR_x) / (n^(1/3))  # Regra de Freedman-Diaconis
+}
+
+hist_and_box <- function(data=df, x, x_name){
+  
+  box_plot <- ggplot(data, aes(x = x)) +
+    geom_boxplot() +
+    coord_cartesian(xlim = range(x, na.rm = TRUE)) +  # Align scales with histogram
+    labs(x = x_name) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+  hist_plot <- ggplot(data, aes(x = x)) +
+    geom_histogram(position = "identity", color = "darkgrey", binwidth = bin_width(x)) +
+    coord_cartesian(xlim = range(x, na.rm = TRUE)) +
+    labs(x = x_name, y = "Frequency") +
+    scale_x_continuous() +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 60, hjust = 1))
+  
+  combined_plot <- box_plot / hist_plot + plot_layout(heights = c(3, 8))
+  combined_plot
+  
+}
+
+
+stats_calc <- function(df) {
+  means <- numeric(length(df))
+  sds <- numeric(length(df))
+  medians <- numeric(length(df))
+  iqrs <- numeric(length(df))
+  mins <- numeric(length(df))
+  maxs <- numeric(length(df))
+  
+  for (i in seq_along(df)) {
+    column <- df[[i]]
+    means[i] <- mean(column, na.rm = TRUE)
+    sds[i] <- sd(column, na.rm = TRUE)
+    medians[i] <- median(column, na.rm = TRUE)
+    iqrs[i] <- IQR(column, na.rm = TRUE)
+    mins[i] <- min(column, na.rm = TRUE)
+    maxs[i] <- max(column, na.rm = TRUE)
+  }
+  
+  # Combine into a data frame
+  resultado <- data.frame(
+    Variable = names(df),
+    Min = mins,
+    Mean = means,
+    Median = medians,
+    SD = sds,
+    IQR = iqrs,
+    Max = maxs
+  )
+  
+  return(resultado)
+}
+scatter_plot <- function(data, x_var, y_var, x_label, y_label, title = "Scatter Plot") {
+  ggplot(data, aes(x = x_var, y = y_var)) +
+    geom_point(color = "darkgrey", alpha = 0.6) +  # Blue points with transparency
+    labs(x = x_label, y = y_label, title = paste(y_label, "vs.", x_label)) +
+    theme_minimal(base_size = 14)  # Clean theme with readable font size
+}
+
+
+# Função para gerar uma tabela com os resultados do Tukey
+tukey_table <- function(var_name, tukey_result) {
+  # Criando a tabela para a variável
+  result_df <- data.frame(
+    Comparison = rownames(tukey_result),
+    Mean_Difference = tukey_result[, "diff"],
+    Confidence_Interval = paste("[", round(tukey_result[, "lwr"], 2), ", ", round(tukey_result[, "upr"], 2), "]", sep = ""),
+    Adjusted_p_value = round(tukey_result[, "p adj"], 3)
+  )
+  
+  # Renomeando as colunas
+  colnames(result_df) <- c("Comparison", paste("Mean_Difference (", var_name, ")", sep = ""), "Confidence_Interval", "Adjusted_p_value")
+  
+  return(result_df)
+}
+
+violin_boxplot <- function(df, variavel, separacao, xtitulo, ytitulo) {
+  ggplot(df, aes(x = separacao, y = variavel, fill = separacao)) +
+    geom_violin(trim = FALSE, alpha = 0.5) +  # Gráfico de violino
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black") + # Boxplot embutido 
+    scale_fill_manual(values = c("1" = "lightgoldenrod", "2" = "lightskyblue", "3" = "lightgray")) +
+    labs(x = xtitulo, y = ytitulo) +
+    theme_minimal() +
+    theme(legend.position = "none")  # Remove a legenda
+}
+```
+
+# Dataset
+
+```{r, echo=FALSE}
+kableExtra::kable(df_vars, caption = "Gym members dataset variable meaning.") %>% kable_styling(font_size= 16)
+
+
+```
+
+**Observações:** 973 sem dados omissos
+
+# Análise Exploratória dos Dados
+
+```{r, echo=FALSE}
+stats_table <- stats_calc(df_numeric)
+kable(stats_table, caption = "Descriptive statistics for the numeric variables of the dataset.") %>% kable_styling(font_size = 15)
+```
+
+## Distribuição da Idade em função do Género
+```{r, echo=FALSE}
+ggplot(df, aes(x=Experience_Level, y= Age, fill = Gender)) + 
+  geom_boxplot() + 
+  theme_minimal() +
+  labs(x = "Experience level") +
+  scale_fill_manual(values = c("Female" = "lightgray", "Male" = "lightgoldenrod"))
+```
+
+## Distribuição da Frequênica e Duração dos treinos
+```{r}
+ggplot(df_exp, aes(x=as.factor(Workout_Frequency..days.week.), 
+                   y=Session_Duration..hours.)) +
+  geom_boxplot() +
+  labs(x = "Frequency of workout session (days)", 
+       y = "Duration of workout session (hours)") +
+  theme_minimal()
+```
+
+## 
+```{r}
+p1 <- hist_and_box(df_numeric, df_numeric$Age, "Age")
+p2 <- hist_and_box(df_numeric, df_numeric$Weight..kg., "Weight (Kg)")
+p3 <- hist_and_box(df_numeric, df_numeric$Height..m., "Height (m)")
+p4 <- hist_and_box(df_numeric, df_numeric$Max_BPM, "Max BPM")
+p5 <- hist_and_box(df_numeric, df_numeric$Avg_BPM, "Average BPM")
+p6 <- hist_and_box(df_numeric, df_numeric$Resting_BPM, "Resting BPM")
+p7 <- hist_and_box(df_numeric, df_numeric$Session_Duration..hours., "Session Duration (hours)")
+p8 <- hist_and_box(df_numeric, df_numeric$Calories_Burned, "Calories Burned")
+p9 <- hist_and_box(df_numeric, df_numeric$Fat_Percentage, "Fat Percentage (%)")
+p10 <- hist_and_box(df_numeric, df_numeric$Water_Intake..liters., "Water Intake (l)")
+p11 <- hist_and_box(df_numeric, df_numeric$Workout_Frequency..days.week., "Workout Frequency (Days)")
+p12 <- hist_and_box(df_numeric, df_numeric$BMI, "Body Mass Index")
+
+# Combine all plots into one slide
+combined_plot <- (p1 | p2 ) /( p3 | p4) 
+
+combined_plot
+
+```
+##
+```{r}
+cp <- (p5 | p6 ) /( p7 | p8) 
+cp
+```
+##
+
+```{r}
+cp <- (p9 | p10 )/( p11 | p12)
+cp
+```
+
+## Correlação entre as variáveis
+```{r, echo=FALSE,  fig.width=7, fig.height=7, fig.align='center'}
+cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+cor_long <- as.data.frame(as.table(cor_matrix))
+short_names <- abbreviate(colnames(cor_matrix), minlength = 6)
+
+corrplot(cor_matrix)
+```
+
+# PCA
+```{r,echo=FALSE, warning=FALSE}
+# PCA
+pca <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
+pca_summary <- round(summary(pca)$importance, 2)
+
+# K-means
+kmeans_clusters <- kmeans(df_scaled, centers = 3, nstart = 25)
+df$kmeanscluster <- as.factor(kmeans_clusters$cluster)
+
+pca_scores <- as.data.frame(pca$x[, 1:3])
+
+pca_scores$kmeanscluster <- as.factor(kmeans_clusters$cluster)
+
+# Realizando a ANOVA para cada variável numérica e depois o teste de Tukey
+resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
+  aov_result <- aov(x ~ kmeanscluster, data = df)
+  
+  # Realizar o teste de Tukey se a ANOVA for significativa
+  if (summary(aov_result)[[1]]$`Pr(>F)`[1] < 0.05) {
+    tukey_result <- TukeyHSD(aov_result)
+    return(tukey_result)
+  } else {
+    return(NULL)  # Se não for significativo, retornamos NULL
+  }
+})
+
+# Filtrando variáveis com resultados de Tukey
+resultados_posthoc_significativos <- resultados_posthoc[sapply(resultados_posthoc, function(x) !is.null(x))]
+
+# Aplicando a função para cada variável significativa
+resultados_tukey_all <- lapply(names(resultados_posthoc_significativos), function(var_name) {
+  tukey_result <- resultados_posthoc_significativos[[var_name]]
+  tukey_table(var_name, tukey_result[[1]])
+})
+
+gmm_clusters <- Mclust(df_scaled, G = 3)
+df$gmmcluster <- as.factor(gmm_clusters$classification)
+cluster_labels <- as.numeric(gmm_clusters$classification)
+
+sil_kmeans <- silhouette(kmeans_clusters$cluster, dist(df_scaled))
+sil_gmm <- silhouette(cluster_labels, dist(df_scaled))
+
+mapa_clusters <- c(2, 3, 1)
+df$gmmcluster <- as.factor(mapa_clusters[df$gmmcluster])
+
+```
+
+```{r,echo=FALSE}
+kable(pca_summary, caption = "PCA synthesis") %>% kable_styling(font_size = 25)
+```
+
+## Scree Plot
+```{r, echo=FALSE}
+fviz_eig(pca, addlabels = TRUE, ylim = c(0, 50))
+```
+
+##
+```{r, fig.width= 14, fig.height=6}
+pca_scores <- pca$x[, 1:3]
+
+p1 <- ggplot(data.frame(PCA1 = pca_scores[, 1], PCA2 = pca_scores[, 2]), aes(x = PCA1, y = PCA2)) +
+  geom_point() +
+  labs(x = "PCA1", y = "PCA2", title = "PCA1 vs PCA2") +
+  theme_minimal() 
+
+
+p2 <- ggplot(data.frame(PCA1 = pca_scores[, 1], PCA3 = pca_scores[, 3]), aes(x = PCA1, y = PCA3)) +
+  geom_point() +
+  labs(x = "PCA1", y = "PCA3", title = "PCA1 vs PCA3") +
+  theme_minimal() 
+
+
+p3 <- ggplot(data.frame(PCA2 = pca_scores[, 2], PCA3 = pca_scores[, 3]), aes(x = PCA2, y = PCA3)) +
+  geom_point() +
+  labs(x = "PCA2", y = "PCA3", title = "PCA2 vs PCA3") +
+  theme_minimal() 
+
+combined_plot <- (p1 | p2 | p3)
+combined_plot
+```
+##
+```{r}
+fviz_pca_var(pca, 
+             col.var = "contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE)
+```
+
+
+# Clustering  - K-means
+```{r}
+fviz_nbclust(df_scaled, kmeans, method = "wss")
+```
+
+
+## Biplot
+```{r}
+fviz_pca_biplot(pca, 
+                label = "var", 
+                habillage = df$kmeanscluster, 
+                addEllipses = TRUE, 
+                ellipse.level = 0.95,
+                palette = "jco",
+                col.var = "red")
+```
+##
+```{r}
+sil_k <- fviz_silhouette(sil_kmeans) +
+  labs(title = "Silhouette Plot of k-means Clusters")
+sil_k
+```
+
+# Clustering - GMM
+```{r}
+fviz_pca_biplot(pca, 
+                label = "var", 
+                habillage = df$gmmcluster, 
+                addEllipses = TRUE, 
+                ellipse.level = 0.95,
+                palette = "jco",
+                col.var = "red")
+```
+##
+
+```{r}
+sil_g <- fviz_silhouette(sil_gmm) +
+  labs(title = "Silhouette Plot of GMM Clusters")
+sil_g
+```
+
+
+# Comparação entre os Clusters
+##
+
+```{r}
+vkmweight <- violin_boxplot(df, df$Weight..kg., df$kmeanscluster, "Clusters (kmeans)", "Weight (kg)")
+
+vkmheight <-violin_boxplot(df, df$Height..m., df$kmeanscluster, "Clusters (kmeans)", "Height (m)")
+
+vkmsd <-violin_boxplot(df, df$Session_Duration..hours., df$kmeanscluster, "Clusters (kmeans)", "Session duration (Hours)")
+
+
+vkmcb <-violin_boxplot(df, df$Calories_Burned, df$kmeanscluster, "Clusters (kmeans)", "Burned Calories (kcal)")
+
+vkmfp <-violin_boxplot(df, df$Fat_Percentage, df$kmeanscluster, "Clusters (kmeans)", "Body fat percentage (%)")
+
+vkmwi <-violin_boxplot(df, df$Water_Intake..liters., df$kmeanscluster, "Clusters (kmeans)", "Water Intake (L)")
+
+
+vkmwf <-violin_boxplot(df, df$Workout_Frequency..days.week., df$kmeanscluster, "Clusters (kmeans)", "Workout frequency (days/week)")
+
+vkmbmi <-violin_boxplot(df, df$BMI, df$kmeanscluster, "Clusters (kmeans)", "Body Mass Index")
+
+
+
+
+
+vgmmweight <- violin_boxplot(df, df$Weight..kg., df$gmmcluster, "Clusters (GMM)", "Weight (kg)")
+
+vgmmheight <-violin_boxplot(df, df$Height..m., df$gmmcluster, "Clusters (GMM)", "Height (m)")
+
+vgmmsd <-violin_boxplot(df, df$Session_Duration..hours., df$gmmcluster, "Clusters (GMM)", "Session duration (Hours)")
+
+vgmmcb <-violin_boxplot(df, df$Calories_Burned, df$gmmcluster, "Clusters (GMM)", "Burned Calories (kcal)")
+
+vgmmfp <-violin_boxplot(df, df$Fat_Percentage, df$gmmcluster, "Clusters (GMM)", "Body fat percentage (%)")
+
+vgmmwi <-violin_boxplot(df, df$Water_Intake..liters., df$gmmcluster, "Clusters (GMM)", "Water Intake (L)")
+
+vgmmwf <-violin_boxplot(df, df$Workout_Frequency..days.week., df$gmmcluster, "Clusters (GMM)", "Workout frequency (days/week)")
+
+vgmmbmi <-violin_boxplot(df, df$BMI, df$gmmcluster, "Clusters (GMM)", "Body Mass Index")
+```
+
+
+```{r}
+(vkmweight | vkmheight | vkmsd) / (vgmmweight| vgmmheight | vgmmsd)
+
+```
+##
+```{r}
+(vkmcb | vkmfp | vkmwi) / (vgmmcb | vgmmfp | vgmmwi)
+```
+
+##
+
+```{r}
+(vkmwf | vkmbmi) / (vgmmwf | vgmmbmi)
+```
+
+
+

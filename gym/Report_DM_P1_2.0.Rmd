@@ -62,7 +62,7 @@ df_numeric <- df %>% select(where(is.numeric))
 
 df_scaled <- scale(df_numeric)
 
-df_exp <- df_numeric %>% merge(df$Experience_Level)
+df_exp <- df_numeric %>% merge(as.numeric(df$Experience_Level))
 ```
 
 ```{r, echo=FALSE}
@@ -76,18 +76,18 @@ bin_width <- function(x) {
 hist_and_box <- function(data=df, x, x_name){
   
   box_plot <- ggplot(data, aes(x = x)) +
-  geom_boxplot() +
-  coord_cartesian(xlim = range(x, na.rm = TRUE)) +  # Align scales with histogram
-  labs(x = x_name) +
-  theme(legend.position = "none")
+    geom_boxplot() +
+    coord_cartesian(xlim = range(x, na.rm = TRUE)) +  # Align scales with histogram
+    labs(x = x_name) +
+    theme_minimal() +
+    theme(legend.position = "none")
 
   hist_plot <- ggplot(data, aes(x = x)) +
     geom_histogram(position = "identity", color = "darkgrey", binwidth = bin_width(x)) +
-    coord_cartesian(xlim = range(x, na.rm = TRUE))+
-    labs(
-         x =x_name,
-         y = "Frequency") +
+    coord_cartesian(xlim = range(x, na.rm = TRUE)) +
+    labs(x = x_name, y = "Frequency") +
     scale_x_continuous() +
+    theme_minimal() +
     theme(legend.position = "none",
           axis.text.x = element_text(angle = 60, hjust = 1))
   
@@ -95,6 +95,7 @@ hist_and_box <- function(data=df, x, x_name){
   combined_plot
   
 }
+
 
 stats_calc <- function(df) {
   means <- numeric(length(df))
