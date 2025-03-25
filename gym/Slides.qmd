@@ -1,6 +1,7 @@
 ---
-title: "Membros de Ginásio"
+title: "ACP e Clusters - Ginásios"
 format: revealjs
+author: "André Eiras  \n  Diogo Cruz"
 editor: visual
 ---
 
@@ -249,7 +250,7 @@ pca_scores <- as.data.frame(pca$x[, 1:3])
 pca_scores$kmeanscluster <- as.factor(kmeans_clusters$cluster)
 
 # Realizando a ANOVA para cada variável numérica e depois o teste de Tukey
-resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
+resultados_posthoc_km <- lapply(df[, sapply(df, is.numeric)], function(x) {
   aov_result <- aov(x ~ kmeanscluster, data = df)
   
   # Realizar o teste de Tukey se a ANOVA for significativa
@@ -262,23 +263,58 @@ resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
 })
 
 # Filtrando variáveis com resultados de Tukey
-resultados_posthoc_significativos <- resultados_posthoc[sapply(resultados_posthoc, function(x) !is.null(x))]
+resultados_posthoc_significativos_km <- resultados_posthoc_km[sapply(resultados_posthoc_km, function(x) !is.null(x))]
 
 # Aplicando a função para cada variável significativa
-resultados_tukey_all <- lapply(names(resultados_posthoc_significativos), function(var_name) {
-  tukey_result <- resultados_posthoc_significativos[[var_name]]
+resultados_tukey_all_km <- lapply(names(resultados_posthoc_significativos_km), function(var_name) {
+  tukey_result <- resultados_posthoc_significativos_km[[var_name]]
   tukey_table(var_name, tukey_result[[1]])
 })
+
+
+
 
 gmm_clusters <- Mclust(df_scaled, G = 3)
 df$gmmcluster <- as.factor(gmm_clusters$classification)
 cluster_labels <- as.numeric(gmm_clusters$classification)
 
-sil_kmeans <- silhouette(kmeans_clusters$cluster, dist(df_scaled))
-sil_gmm <- silhouette(cluster_labels, dist(df_scaled))
+
 
 mapa_clusters <- c(2, 3, 1)
 df$gmmcluster <- as.factor(mapa_clusters[df$gmmcluster])
+
+resultados_posthoc_gmm <- lapply(df[, sapply(df, is.numeric)], function(x) {
+  aov_result <- aov(x ~ gmmcluster, data = df)
+  
+  # Realizar o teste de Tukey se a ANOVA for significativa
+  if (summary(aov_result)[[1]]$`Pr(>F)`[1] < 0.05) {
+    tukey_result <- TukeyHSD(aov_result)
+    return(tukey_result)
+  } else {
+    return(NULL)  # Se não for significativo, retornamos NULL
+  }
+})
+
+# Filtrando variáveis com resultados de Tukey
+resultados_posthoc_significativos_gmm <- resultados_posthoc_gmm[sapply(resultados_posthoc_gmm, function(x) !is.null(x))]
+
+# Aplicando a função para cada variável significativa
+resultados_tukey_all_gmm <- lapply(names(resultados_posthoc_significativos_gmm), function(var_name) {
+  tukey_result <- resultados_posthoc_significativos_gmm[[var_name]]
+  tukey_table(var_name, tukey_result[[1]])
+})
+
+
+sil_kmeans <- silhouette(kmeans_clusters$cluster, dist(df_scaled))
+sil_gmm <- silhouette(gmm_clusters$classification, dist(df_scaled))
+
+
+
+dist_matrix <- dist(df_scaled)  
+
+hc <- hclust(dist_matrix, method = "complete")  # Método de ligação completa
+hier_clusters <- cutree(hc, k = 3)
+
 
 ```
 
@@ -315,12 +351,49 @@ p3 <- ggplot(data.frame(PCA2 = pca_scores[, 2], PCA3 = pca_scores[, 3]), aes(x =
 combined_plot <- (p1 | p2 | p3)
 combined_plot
 ```
+
+```{r, include=FALSE}
+
+pc3d <- data.frame(
+  PCA1 = pca_scores[, 1],
+  PCA2 = pca_scores[, 2],
+  PCA3 = pca_scores[, 3]
+)
+
+fig <- plot_ly(pc3d, x = ~PCA1, y = ~PCA2, z = ~PCA3, type = "scatter3d", mode = "markers",  marker = list(size = 5, opacity = 0.5))
+
+fig <- fig %>% layout(
+  scene = list(
+    xaxis = list(title = "PCA1"),
+    yaxis = list(title = "PCA2"),
+    zaxis = list(title = "PCA3")
+  )
+)
+
+fig
+
+```
+
+
+
 ##
 ```{r}
 fviz_pca_var(pca, 
              col.var = "contrib", 
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
              repel = TRUE)
+```
+##
+```{r}
+loadings_3_pcas <- pca$rotation[, 1:3]
+top_variables <- apply(loadings_3_pcas, 2, function(x) {
+  names(sort(abs(x), decreasing = TRUE)[1:3])
+})
+
+top_variables_df <- as.data.frame(top_variables)
+colnames(top_variables_df) <- c("PC1", "PC2", "PC3")
+
+kable(top_variables_df, caption = "Top 3 variáveis mais influentes na ACP") %>% kable_styling(font_size = 15)
 ```
 
 
@@ -340,6 +413,39 @@ fviz_pca_biplot(pca,
                 palette = "jco",
                 col.var = "red")
 ```
+
+```{r, include= FALSE}
+pc3d <- data.frame(
+  PCA1 = pca_scores[, 1],
+  PCA2 = pca_scores[, 2],
+  PCA3 = pca_scores[, 3],
+  Cluster = as.factor(df$kmeanscluster))
+
+fig <- plot_ly(
+  pc3d, 
+  x = ~PCA1, 
+  y = ~PCA2, 
+  z = ~PCA3, 
+  color = ~Cluster, 
+  type = "scatter3d", 
+  mode = "markers",
+  marker = list(size = 5, opacity = 0.7)
+)
+
+fig <- fig %>% layout(
+  scene = list(
+    xaxis = list(title = "PCA1"),
+    yaxis = list(title = "PCA2"),
+    zaxis = list(title = "PCA3")
+  )
+)
+
+fig
+```
+
+
+
+
 ##
 ```{r}
 sil_k <- fviz_silhouette(sil_kmeans) +
@@ -357,12 +463,59 @@ fviz_pca_biplot(pca,
                 palette = "jco",
                 col.var = "red")
 ```
-##
 
+
+```{r, include = FALSE}
+pc3d <- data.frame(
+  PCA1 = pca_scores[, 1],
+  PCA2 = pca_scores[, 2],
+  PCA3 = pca_scores[, 3],
+  Cluster = as.factor(df$gmmcluster))
+
+fig <- plot_ly(
+  pc3d, 
+  x = ~PCA1, 
+  y = ~PCA2, 
+  z = ~PCA3, 
+  color = ~Cluster, 
+  type = "scatter3d", 
+  mode = "markers",
+  marker = list(size = 5, opacity = 0.7)
+)
+
+fig <- fig %>% layout(
+  scene = list(
+    xaxis = list(title = "PCA1"),
+    yaxis = list(title = "PCA2"),
+    zaxis = list(title = "PCA3")
+  )
+)
+
+fig
+```
+
+
+
+##
 ```{r}
 sil_g <- fviz_silhouette(sil_gmm) +
   labs(title = "Silhouette Plot of GMM Clusters")
 sil_g
+```
+
+# Clustering  - Cluster Hierárquico
+```{r}
+fviz_dend(hc, k = 3, cex = 0.5, rect = TRUE, k_colors = c("#00AFBB", "#E7B800", "#FC4E07"))
+```
+##
+```{r}
+fviz_pca_biplot(pca, 
+                label = "var", 
+                habillage = hier_clusters, 
+                addEllipses = TRUE, 
+                ellipse.level = 0.95,
+                palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+                col.var = "red")
 ```
 
 
@@ -411,19 +564,50 @@ vgmmbmi <-violin_boxplot(df, df$BMI, df$gmmcluster, "Clusters (GMM)", "Body Mass
 
 
 ```{r}
-(vkmweight | vkmheight | vkmsd) / (vgmmweight| vgmmheight | vgmmsd)
+(vkmweight |vgmmweight) / ( vkmheight |vgmmheight )
 
 ```
 ##
 ```{r}
-(vkmcb | vkmfp | vkmwi) / (vgmmcb | vgmmfp | vgmmwi)
+ (vkmsd  | vgmmsd) / (vkmcb |vgmmcb)  
+```
+
+##
+```{r}
+(  vkmwi |vgmmwi ) / ( vkmfp| vgmmfp  )
 ```
 
 ##
 
 ```{r}
-(vkmwf | vkmbmi) / (vgmmwf | vgmmbmi)
+(vkmwf |vgmmwf ) / ( vkmbmi| vgmmbmi)
 ```
+
+
+```{r, include = FALSE}
+lapply(resultados_tukey_all_km, function(tabela) {
+  var_name <- names(tabela)[2]
+  
+  kable(tabela, 
+        caption = paste("Tukey test results for the variable:", var_name, " - K-means Clusters "), 
+        digits = c(0, 2, 0, 3), 
+        align = "lccc", 
+        col.names = c("Comparison", "Mean Difference", "Confidence Interval", "Adjusted p-value"))
+})
+```
+
+```{r, include=FALSE}
+lapply(resultados_tukey_all_gmm, function(tabela) {
+  var_name <- names(tabela)[2]
+  
+  kable(tabela, 
+        caption = paste("Tukey test results for the variable:", var_name, " - GMM Clusters "), 
+        digits = c(0, 2, 0, 3), 
+        align = "lccc", 
+        col.names = c("Comparison", "Mean Difference", "Confidence Interval", "Adjusted p-value"))
+})
+```
+
 
 
 
