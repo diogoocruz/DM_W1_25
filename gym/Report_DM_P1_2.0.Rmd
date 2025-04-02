@@ -156,7 +156,7 @@ violin_boxplot <- function(df, variavel, separacao, xtitulo, ytitulo) {
   ggplot(df, aes(x = separacao, y = variavel, fill = separacao)) +
     geom_violin(trim = FALSE, alpha = 0.5) +  # Gráfico de violino
     geom_boxplot(width = 0.1, outlier.shape = NA, color = "black") + # Boxplot embutido 
-    scale_fill_manual(values = c("1" = "lightgoldenrod", "2" = "lightskyblue", "3" = "lightgray")) +
+    scale_fill_manual(values = c("1" = "lightskyblue", "2" = "lightgoldenrod", "3" = "lightgray")) +
     labs(x = xtitulo, y = ytitulo) +
     theme_minimal() +
     theme(legend.position = "none")  # Remove a legenda
@@ -207,7 +207,7 @@ pca_scores <- as.data.frame(pca$x[, 1:3])
 
 pca_scores$kmeanscluster <- as.factor(kmeans_clusters$cluster)
 
-# Realizando a ANOVA para cada variável numérica e depois o teste de Tukey
+# ANOVA para cada variável numérica e depois o teste de Tukey
 resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
   aov_result <- aov(x ~ kmeanscluster, data = df)
   
@@ -220,21 +220,49 @@ resultados_posthoc <- lapply(df[, sapply(df, is.numeric)], function(x) {
   }
 })
 
-# Filtrando variáveis com resultados de Tukey
+# Filtrar variáveis com resultados de Tukey
 resultados_posthoc_significativos <- resultados_posthoc[sapply(resultados_posthoc, function(x) !is.null(x))]
 
-# Aplicando a função para cada variável significativa
+# Aplicar a função para cada variável significativa
 resultados_tukey_all <- lapply(names(resultados_posthoc_significativos), function(var_name) {
   tukey_result <- resultados_posthoc_significativos[[var_name]]
   tukey_table(var_name, tukey_result[[1]])
 })
 
+# GMM cluster
 gmm_clusters <- Mclust(df_scaled, G = 3)
 df$gmmcluster <- as.factor(gmm_clusters$classification)
 cluster_labels <- as.numeric(gmm_clusters$classification)
 
+# Hierarchical CLustering
+dist_matrix <- dist(df_scaled)
+
+## Deciding on linkage criteria
+methods <- c("complete", "average", "single", "ward.D2")
+cophenetic_scores <- sapply(methods, function(m) { 
+  hc <- hclust(dist_matrix, method = m)
+  coph_corr <- cor(dist_matrix, cophenetic(hc))
+  return(coph_corr)
+}) # Measures how well the dendrogram preserves original pairwise distances. The higher, the better (closer to 1).
+
+silhouette_scores <- sapply(methods, function(m) {
+  hc <- hclust(dist_matrix, method = m)
+  clusters <- cutree(hc, k = 3) 
+  sil <- silhouette(clusters, dist_matrix)
+  mean(sil[, 3])  # average silhouette width
+})
+
+hc_linkage <- data_frame(methods, silhouette_scores, cophenetic_scores)
+  
+  
+hc <- hclust(dist_matrix, method = "ward.D2")  # Método Ward.D2 is good for spherical clusters
+hier_clusters <- cutree(hc, k = 3)
+
+
+# Silhoutte MAtrix
 sil_kmeans <- silhouette(kmeans_clusters$cluster, dist(df_scaled))
 sil_gmm <- silhouette(cluster_labels, dist(df_scaled))
+sil_hc <- silhouette(hier_clusters, dist_matrix)
 ```
 
 ## Principal Components Analysis
@@ -256,7 +284,7 @@ As shown in Figure 1, the explained variance drops significantly after the third
 fviz_eig(pca, addlabels = TRUE, ylim = c(0, 50))
 ```
 
-Table 3 presents the three most influential variables for each of the first three principal components. The first principal component is primarily driven by calories burned, body fat percentage, and workout duration. The second component is most influenced by weight, body mass index (BMI), and again workout duration, indicating shared relevance across components. The third component is shaped mainly by height, BMI, and daily water intake. For a detailed breakdown of each variable’s loading on the principal components, please refer to Table 4 in the Annex section. A visual representation of variable contributions is also available in Figure 20.
+Table 3 presents the three most influential variables for each of the first three principal components. The first principal component is primarily driven by calories burned, body fat percentage, and workout duration. The second component is most influenced by weight, body mass index (BMI), and again workout duration, indicating shared relevance across components. The third component is shaped mainly by height, BMI, and daily water intake. For a detailed breakdown of each variable’s loading on the principal components, please refer to Table 5 in the Annex section. A visual representation of variable contributions is also available in Figure 20.
 
 ```{r, echo=FALSE}
 loadings_3_pcas <- pca$rotation[, 1:3]
@@ -308,26 +336,35 @@ By conducting an ANOVA followed by Tukey post-hoc tests, we identified the varia
 In terms of interpretation, Cluster 1 is composed of heavier, taller individuals who tend to have a higher BMI and consume more water per workout. Cluster 2 includes the majority of gym members, and is mainly associated with older individuals with a higher body fat percentage. Cluster 3 represents a high-performance group who work out more frequently and for longer duration, leading to greater calorie expenditure. For a visual representation of these relationships, refer to the biplot in Figure 3.
 
 ```{r,echo=FALSE, fig.height=7, fig.width=7, fig.cap="Biplot of the PCA with 3 Gaussian Mixture Model clusters color coded. PC1 on the x-axis explains 27.6% of the variance and PC2 on the y-axis explains 16.8%."}
+
 fviz_pca_biplot(pca, 
                 label = "var", 
                 habillage = df$gmmcluster, 
                 addEllipses = TRUE, 
                 ellipse.level = 0.95,
-                palette = "jco",
+                palette = c("lightskyblue", "lightgoldenrod", "lightgray"),
                 col.var = "red")
 ```
-To evaluate the quality of both clustering solutions, we used silhouette indices, with the corresponding plots shown in Figure 4. For a more detailed comparison of cluster differences across variables in both methods, refer to Figures 21–28 in the Annex section of this report. In the k-means clustering, the most cohesive structure was observed in Cluster 3, whereas Clusters 1 and 2 exhibited flatter or declining silhouette values, indicating less clearly defined boundaries between clusters. In contrast, for the Gaussian Mixture Model (GMM) clustering, the most cohesive cluster was Cluster 1. In both clustering approaches, Cluster 2 showed the weakest performance in terms of cohesion.
+
+To evaluate the quality of both clustering solutions, we used silhouette indices, with the corresponding plots shown in Figure 3. For a more detailed comparison of cluster differences across variables in both methods, refer to Figures 21–28 in the Annex section of this report. In the k-means clustering, the most cohesive structure was observed in Cluster 3, whereas Clusters 1 and 2 exhibited flatter or declining silhouette values, indicating less clearly defined boundaries between clusters. In contrast, for the Gaussian Mixture Model (GMM) clustering, the most cohesive cluster was Cluster 1. In both clustering approaches, Cluster 2 showed the weakest performance in terms of cohesion.
 
 While the average silhouette widths were slightly lower for k-means compared to GMM’s best-performing cluster, the k-means clusters exhibited more balanced sizes, which can be advantageous for interpretability and practical application. 
 
-```{r, echo=FALSE, fig.cap="Comparison between silhouette plots of K-means Cluster (left) and GMM Clusters (right)"}
-sil_k <- fviz_silhouette(sil_kmeans) +
-  labs(title = "Silhouette Plot of k-means Clusters")
+```{r, echo=FALSE, fig.cap="Comparison between silhouette plots of K-means Cluster (left, Average width 0.197), GMM Clusters (center, Average width 0.194) and Hierarchical Cluster (right, Average width 0.188)"}
 
-sil_g <- fviz_silhouette(sil_gmm) +
-  labs(title = "Silhouette Plot of GMM Clusters")
+sil_k <- fviz_silhouette(sil_kmeans,
+                         palette = c("lightskyblue", "lightgoldenrod", "lightgray")) +
+  labs(title = "")
 
-sil_k + sil_g
+sil_g <- fviz_silhouette(sil_gmm,
+                         palette = c("lightskyblue", "lightgoldenrod", "lightgray")) +
+  labs(title = "")
+
+sil_h <- fviz_silhouette(sil_hc, 
+                         palette = c("lightskyblue", "lightgoldenrod", "lightgray")) +
+  labs(title = "")
+
+sil_k + sil_g + sil_h
 
 ```
 

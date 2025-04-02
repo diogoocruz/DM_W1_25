@@ -175,6 +175,7 @@ kable(stats_table, caption = "Descriptive statistics for the numeric variables o
 ```
 
 ## Distribuição da Idade em função do Género
+
 ```{r, echo=FALSE}
 ggplot(df, aes(x=Experience_Level, y= Age, fill = Gender)) + 
   geom_boxplot() + 
@@ -184,6 +185,7 @@ ggplot(df, aes(x=Experience_Level, y= Age, fill = Gender)) +
 ```
 
 ## Distribuição da Frequênica e Duração dos treinos
+
 ```{r}
 ggplot(df_exp, aes(x=as.factor(Workout_Frequency..days.week.), 
                    y=Session_Duration..hours.)) +
@@ -194,6 +196,7 @@ ggplot(df_exp, aes(x=as.factor(Workout_Frequency..days.week.),
 ```
 
 ## 
+
 ```{r}
 p1 <- hist_and_box(df_numeric, df_numeric$Age, "Age")
 p2 <- hist_and_box(df_numeric, df_numeric$Weight..kg., "Weight (Kg)")
@@ -214,12 +217,15 @@ combined_plot <- (p1 | p2 ) /( p3 | p4)
 combined_plot
 
 ```
-##
+
+## 
+
 ```{r}
 cp <- (p5 | p6 ) /( p7 | p8) 
 cp
 ```
-##
+
+## 
 
 ```{r}
 cp <- (p9 | p10 )/( p11 | p12)
@@ -227,6 +233,7 @@ cp
 ```
 
 ## Correlação entre as variáveis
+
 ```{r, echo=FALSE,  fig.width=7, fig.height=7, fig.align='center'}
 cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
 cor_long <- as.data.frame(as.table(cor_matrix))
@@ -236,6 +243,7 @@ corrplot(cor_matrix)
 ```
 
 # PCA
+
 ```{r,echo=FALSE, warning=FALSE}
 # PCA
 pca <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
@@ -323,11 +331,13 @@ kable(pca_summary, caption = "PCA synthesis") %>% kable_styling(font_size = 25)
 ```
 
 ## Scree Plot
+
 ```{r, echo=FALSE}
 fviz_eig(pca, addlabels = TRUE, ylim = c(0, 50))
 ```
 
-##
+## 
+
 ```{r, fig.width= 14, fig.height=6}
 pca_scores <- pca$x[, 1:3]
 
@@ -374,16 +384,17 @@ fig
 
 ```
 
+## 
 
-
-##
 ```{r}
 fviz_pca_var(pca, 
              col.var = "contrib", 
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
              repel = TRUE)
 ```
-##
+
+## 
+
 ```{r}
 loadings_3_pcas <- pca$rotation[, 1:3]
 top_variables <- apply(loadings_3_pcas, 2, function(x) {
@@ -396,14 +407,14 @@ colnames(top_variables_df) <- c("PC1", "PC2", "PC3")
 kable(top_variables_df, caption = "Top 3 variáveis mais influentes na ACP") %>% kable_styling(font_size = 15)
 ```
 
+# Clustering - K-means
 
-# Clustering  - K-means
 ```{r}
 fviz_nbclust(df_scaled, kmeans, method = "wss")
 ```
 
-
 ## Biplot
+
 ```{r}
 fviz_pca_biplot(pca, 
                 label = "var", 
@@ -443,10 +454,8 @@ fig <- fig %>% layout(
 fig
 ```
 
+## 
 
-
-
-##
 ```{r}
 sil_k <- fviz_silhouette(sil_kmeans) +
   labs(title = "Silhouette Plot of k-means Clusters")
@@ -454,6 +463,7 @@ sil_k
 ```
 
 # Clustering - GMM
+
 ```{r}
 fviz_pca_biplot(pca, 
                 label = "var", 
@@ -463,7 +473,6 @@ fviz_pca_biplot(pca,
                 palette = "jco",
                 col.var = "red")
 ```
-
 
 ```{r, include = FALSE}
 pc3d <- data.frame(
@@ -494,20 +503,22 @@ fig <- fig %>% layout(
 fig
 ```
 
+## 
 
-
-##
 ```{r}
 sil_g <- fviz_silhouette(sil_gmm) +
   labs(title = "Silhouette Plot of GMM Clusters")
 sil_g
 ```
 
-# Clustering  - Cluster Hierárquico
+# Clustering - Cluster Hierárquico
+
 ```{r}
 fviz_dend(hc, k = 3, cex = 0.5, rect = TRUE, k_colors = c("#00AFBB", "#E7B800", "#FC4E07"))
 ```
-##
+
+## 
+
 ```{r}
 fviz_pca_biplot(pca, 
                 label = "var", 
@@ -518,9 +529,9 @@ fviz_pca_biplot(pca,
                 col.var = "red")
 ```
 
-
 # Comparação entre os Clusters
-##
+
+## 
 
 ```{r}
 vkmweight <- violin_boxplot(df, df$Weight..kg., df$kmeanscluster, "Clusters (kmeans)", "Weight (kg)")
@@ -562,27 +573,28 @@ vgmmwf <-violin_boxplot(df, df$Workout_Frequency..days.week., df$gmmcluster, "Cl
 vgmmbmi <-violin_boxplot(df, df$BMI, df$gmmcluster, "Clusters (GMM)", "Body Mass Index")
 ```
 
-
 ```{r}
 (vkmweight |vgmmweight) / ( vkmheight |vgmmheight )
 
 ```
-##
+
+## 
+
 ```{r}
  (vkmsd  | vgmmsd) / (vkmcb |vgmmcb)  
 ```
 
-##
+## 
+
 ```{r}
 (  vkmwi |vgmmwi ) / ( vkmfp| vgmmfp  )
 ```
 
-##
+## 
 
 ```{r}
 (vkmwf |vgmmwf ) / ( vkmbmi| vgmmbmi)
 ```
-
 
 ```{r, include = FALSE}
 lapply(resultados_tukey_all_km, function(tabela) {
@@ -607,7 +619,3 @@ lapply(resultados_tukey_all_gmm, function(tabela) {
         col.names = c("Comparison", "Mean Difference", "Confidence Interval", "Adjusted p-value"))
 })
 ```
-
-
-
-
